@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
+
+  <meta
+    name="description"
+    content="StoryNest — original stories, thoughtful reading experiences and creative adventures for curious minds."
+  >
+
+  <meta name="theme-color" content="#f5f3ee">
+
+  <title>StoryNest — Stories Worth Discovering</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+
+  <link
+    href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap"
+    rel="stylesheet"
+  >
+
+  <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+
+  <!-- =========================================================
+       APP SHELL
+  ========================================================== -->
+
+  <div id="app">
+
+    <!-- =======================================================
+         HEADER
+    ======================================================== -->
+
+    <header class="site-header">
+
+      <div class="header-inner">
+
+        <a href="#" class="brand" id="brandHome" aria-label="StoryNest home">
+
+          <span class="brand-mark">
+            SN
+          </span>
+
+          <span class="brand-copy">
+            <strong>StoryNest</strong>
+            <small>Stories worth discovering</small>
+          </span>
+
+        </a>
+
+        <nav class="main-nav" aria-label="Primary navigation">
+
+          <button
+            class="nav-link active"
+            data-view="home"
+          >
+            Discover
+          </button>
+
+          <button
+            class="nav-link"
+            data-view="stories"
+          >
+            Stories
+          </button>
+
+          <button
+            class="nav-link"
+            data-view="categories"
+          >
+            Explore
+          </button>
+
+        </nav>
+
+        <div class="header-actions">
+
+          <button
+            class="icon-button"
+            id="searchButton"
+            aria-label="Search"
+            title="Search"
+          >
+            <span>⌕</span>
+          </button>
+
+          <button
+            class="icon-button"
+            id="themeButton"
+            aria-label="Toggle theme"
+            title="Toggle theme"
+          >
+            <span id="themeIcon">◐</span>
+          </button>
+
+          <button
+            class="menu-button"
+            id="mobileMenuButton"
+            aria-label="Open menu"
+          >
+            ☰
+          </button>
+
+        </div>
+
+      </div>
+
+      <div
+        class="mobile-nav"
+        id="mobileNav"
+      >
+        <button data-view="home">Discover</button>
+        <button data-view="stories">Stories</button>
+        <button data-view="categories">Explore</button>
+      </div>
+
+    </header>
+
+
+    <!-- =======================================================
+         STATUS BAR
+    ======================================================== -->
+
+    <div class="status-strip">
+
+      <div class="status-inner">
+
+        <span class="status-dot" id="statusDot"></span>
+
+        <span id="statusText">
+          Connecting to StoryNest...
+        </span>
+
+        <button
+          class="status-refresh"
+          id="refreshButton"
+        >
+          Refresh
+        </button>
+
+      </div>
+
+    </div>
+
+
+    <!-- =======================================================
+         MAIN CONTENT
+    ======================================================== -->
+
+    <main id="mainContent">
+
+      <!-- HOME VIEW -->
+
+      <section
+        id="homeView"
+        class="view active-view"
+      >
+
+        <!-- HERO -->
+
+        <section class="hero">
+
+          <div class="hero-copy">
+
+            <p class="eyebrow">
+              STORYNEST ORIGINALS
+            </p>
+
+            <h1>
+              Stories for
+              <em>curious minds.</em>
+            </h1>
+
+            <p class="hero-description">
+              Discover original adventures, imaginative worlds,
+              meaningful lessons and stories created for readers
+              of every age.
+            </p>
+
+            <div class="hero-actions">
+
+              <button
+                class="primary-button"
+                id="exploreStoriesButton"
+              >
+                Explore stories
+                <span>→</span>
+              </button>
+
+              <button
+                class="text-button"
+                id="randomStoryButton"
+              >
+                Surprise me
+              </button>
+
+            </div>
+
+          </div>
+
+          <div class="hero-art">
+
+            <div class="hero-orbit orbit-one"></div>
+            <div class="hero-orbit orbit-two"></div>
+
+            <div class="hero-book">
+
+              <div class="book-spine"></div>
+
+              <div class="book-cover">
+
+                <span class="book-star">✦</span>
+
+                <span class="book-cover-title">
+                  STORIES
+                </span>
+
+                <span class="book-cover-subtitle">
+                  worth discovering
+                </span>
+
+              </div>
+
+            </div>
+
+          </div>
+
+        </section>
+
+
+        <!-- FEATURED -->
+
+        <section class="content-section">
+
+          <div class="section-heading">
+
+            <div>
+              <p class="eyebrow">
+                FEATURED
+              </p>
+
+              <h2>
+                A story to begin with
+              </h2>
+            </div>
+
+            <button
+              class="section-link"
+              data-view="stories"
+            >
+              View all →
+            </button>
+
+          </div>
+
+          <div
+            class="featured-container"
+            id="featuredContainer"
+          >
+            <!-- Dynamic -->
+          </div>
+
+        </section>
+
+
+        <!-- AGE DISCOVERY -->
+
+        <section class="content-section age-section">
+
+          <div class="section-heading">
+
+            <div>
+              <p class="eyebrow">
+                FIND YOUR NEXT STORY
+              </p>
+
+              <h2>
+                Choose your reading world
+              </h2>
+            </div>
+
+          </div>
+
+          <div class="age-grid">
+
+            <button
+              class="age-card"
+              data-age="4-6"
+            >
+              <span class="age-number">04–06</span>
+              <strong>Little Explorers</strong>
+              <small>Gentle stories & imagination</small>
+            </button>
+
+            <button
+              class="age-card"
+              data-age="7-10"
+            >
+              <span class="age-number">07–10</span>
+              <strong>Young Adventurers</strong>
+              <small>Adventure, discovery & friendship</small>
+            </button>
+
+            <button
+              class="age-card"
+              data-age="11-13"
+            >
+              <span class="age-number">11–13</span>
+              <strong>Growing Minds</strong>
+              <small>Ideas, mystery & imagination</small>
+            </button>
+
+            <button
+              class="age-card"
+              data-age="14-17"
+            >
+              <span class="age-number">14–17</span>
+              <strong>Young Readers</strong>
+              <small>Deeper stories & bigger questions</small>
+            </button>
+
+            <button
+              class="age-card"
+              data-age="18-99"
+            >
+              <span class="age-number">18+</span>
+              <strong>Everyone</strong>
+              <small>Stories for lifelong readers</small>
+            </button>
+
+          </div>
+
+        </section>
+
+
+        <!-- LATEST -->
+
+        <section class="content-section">
+
+          <div class="section-heading">
+
+            <div>
+              <p class="eyebrow">
+                LATEST
+              </p>
+
+              <h2>
+                New stories entering the Nest
+              </h2>
+            </div>
+
+            <button
+              class="section-link"
+              data-view="stories"
+            >
+              Browse →
+            </button>
+
+          </div>
+
+          <div
+            class="story-grid"
+            id="latestContainer"
+          >
+            <!-- Dynamic -->
+          </div>
+
+        </section>
+
+      </section>
+
+
+      <!-- STORIES VIEW -->
+
+      <section
+        id="storiesView"
+        class="view"
+      >
+
+        <section class="page-heading">
+
+          <p class="eyebrow">
+            STORY LIBRARY
+          </p>
+
+          <h1>
+            Find a story
+          </h1>
+
+          <p>
+            Search, filter and discover original StoryNest stories.
+          </p>
+
+        </section>
+
+
+        <!-- SEARCH -->
+
+        <section class="library-controls">
+
+          <div class="search-box">
+
+            <span>⌕</span>
+
+            <input
+              type="search"
+              id="storySearch"
+              placeholder="Search stories..."
+              autocomplete="off"
+            >
+
+            <button id="clearSearch">
+              ×
+            </button>
+
+          </div>
+
+          <select id="ageFilter">
+            <option value="">All ages</option>
+            <option value="4-6">4–6</option>
+            <option value="7-10">7–10</option>
+            <option value="11-13">11–13</option>
+            <option value="14-17">14–17</option>
+            <option value="18-99">18+</option>
+          </select>
+
+          <select id="readingFilter">
+            <option value="">All levels</option>
+            <option value="Beginner">Beginner</option>
+            <option value="Intermediate">Intermediate</option>
+            <option value="Advanced">Advanced</option>
+          </select>
+
+        </section>
+
+
+        <div class="library-meta">
+
+          <span id="resultCount">
+            Loading stories...
+          </span>
+
+          <button
+            class="text-button"
+            id="resetFilters"
+          >
+            Reset
+          </button>
+
+        </div>
+
+
+        <div
+          class="story-grid library-grid"
+          id="storyLibrary"
+        >
+          <!-- Dynamic -->
+        </div>
+
+        <div
+          class="load-more-container"
+          id="loadMoreContainer"
+        >
+          <button
+            class="secondary-button"
+            id="loadMoreButton"
+          >
+            Load more
+          </button>
+        </div>
+
+      </section>
+
+
+      <!-- CATEGORIES VIEW -->
+
+      <section
+        id="categoriesView"
+        class="view"
+      >
+
+        <section class="page-heading">
+
+          <p class="eyebrow">
+            EXPLORE
+          </p>
+
+          <h1>
+            Enter a different world
+          </h1>
+
+          <p>
+            Browse stories by mood, genre and imagination.
+          </p>
+
+        </section>
+
+        <div
+          class="category-grid"
+          id="categoryGrid"
+        >
+
+          <button data-category="Adventure">
+            <span>01</span>
+            <strong>Adventure</strong>
+            <small>Journeys beyond the familiar</small>
+          </button>
+
+          <button data-category="Fantasy">
+            <span>02</span>
+            <strong>Fantasy</strong>
+            <small>Worlds limited only by imagination</small>
+          </button>
+
+          <button data-category="Mystery">
+            <span>03</span>
+            <strong>Mystery</strong>
+            <small>Questions waiting to be answered</small>
+          </button>
+
+          <button data-category="Friendship">
+            <span>04</span>
+            <strong>Friendship</strong>
+            <small>Stories about connection</small>
+          </button>
+
+          <button data-category="Science">
+            <span>05</span>
+            <strong>Science</strong>
+            <small>Curiosity meets discovery</small>
+          </button>
+
+          <button data-category="Life">
+            <span>06</span>
+            <strong>Life</strong>
+            <small>Stories that make us think</small>
+          </button>
+
+        </div>
+
+      </section>
+
+
+      <!-- READER VIEW -->
+
+      <section
+        id="readerView"
+        class="view"
+      >
+
+        <div class="reader-shell">
+
+          <button
+            class="back-button"
+            id="readerBack"
+          >
+            ← Back to stories
+          </button>
+
+          <article class="reader">
+
+            <div
+              class="reader-kicker"
+              id="readerKicker"
+            >
+              STORYNEST ORIGINAL
+            </div>
+
+            <h1 id="readerTitle">
+              Story title
+            </h1>
+
+            <p
+              class="reader-subtitle"
+              id="readerSubtitle"
+            >
+            </p>
+
+            <div class="reader-meta">
+
+              <span id="readerAge"></span>
+              <span>•</span>
+              <span id="readerTime"></span>
+              <span>•</span>
+              <span id="readerLevel"></span>
+
+            </div>
+
+            <div
+              class="reader-progress"
+              aria-hidden="true"
+            >
+              <span id="readerProgressBar"></span>
+            </div>
+
+            <div
+              class="reader-content"
+              id="readerContent"
+            >
+              <!-- Dynamic -->
+            </div>
+
+            <section
+              class="reader-section"
+              id="charactersSection"
+            >
+
+              <p class="eyebrow">
+                CHARACTERS
+              </p>
+
+              <div
+                class="characters-grid"
+                id="charactersContainer"
+              ></div>
+
+            </section>
+
+            <section
+              class="reader-section"
+              id="reflectionSection"
+            >
+
+              <p class="eyebrow">
+                THINK ABOUT IT
+              </p>
+
+              <div
+                class="reflection-card"
+                id="reflectionContent"
+              ></div>
+
+            </section>
+
+            <section
+              class="reader-section"
+              id="activitySection"
+            >
+
+              <p class="eyebrow">
+                TRY THIS
+              </p>
+
+              <div
+                class="activity-card"
+                id="activityContent"
+              ></div>
+
+            </section>
+
+            <section
+              class="reader-section"
+              id="relatedSection"
+            >
+
+              <div class="section-heading compact">
+
+                <div>
+                  <p class="eyebrow">
+                    KEEP READING
+                  </p>
+
+                  <h2>
+                    More stories
+                  </h2>
+                </div>
+
+              </div>
+
+              <div
+                class="story-grid"
+                id="relatedStories"
+              ></div>
+
+            </section>
+
+          </article>
+
+        </div>
+
+      </section>
+
+    </main>
+
+
+    <!-- =======================================================
+         GLOBAL AUDIO PLAYER
+    ======================================================== -->
+
+    <aside
+      class="audio-player"
+      id="audioPlayer"
+      aria-label="Audio narration"
+    >
+
+      <div class="audio-info">
+
+        <span class="audio-icon">
+          ♪
+        </span>
+
+        <div>
+          <strong id="audioTitle">
+            StoryNest narration
+          </strong>
+
+          <small id="audioStatus">
+            Ready
+          </small>
+        </div>
+
+      </div>
+
+      <div class="audio-controls">
+
+        <button
+          id="audioPlay"
+          aria-label="Play"
+        >
+          ▶
+        </button>
+
+        <div class="audio-progress">
+
+          <span id="audioProgress"></span>
+
+        </div>
+
+        <select
+          id="audioSpeed"
+          aria-label="Narration speed"
+        >
+          <option value="0.75">0.75×</option>
+          <option value="1" selected>1×</option>
+          <option value="1.25">1.25×</option>
+          <option value="1.5">1.5×</option>
+          <option value="2">2×</option>
+        </select>
+
+        <button
+          id="audioClose"
+          aria-label="Close audio player"
+        >
+          ×
+        </button>
+
+      </div>
+
+      <audio
+        id="audioElement"
+        preload="metadata"
+      ></audio>
+
+    </aside>
+
+
+    <!-- =======================================================
+         SEARCH OVERLAY
+    ======================================================== -->
+
+    <div
+      class="search-overlay"
+      id="searchOverlay"
+      aria-hidden="true"
+    >
+
+      <div class="search-panel">
+
+        <button
+          class="search-close"
+          id="searchClose"
+        >
+          ×
+        </button>
+
+        <p class="eyebrow">
+          SEARCH STORYNEST
+        </p>
+
+        <h2>
+          What would you like to discover?
+        </h2>
+
+        <div class="large-search">
+
+          <span>⌕</span>
+
+          <input
+            type="search"
+            id="globalSearch"
+            placeholder="Try a title, adventure, friendship..."
+          >
+
+        </div>
+
+        <div id="globalSearchResults"></div>
+
+      </div>
+
+    </div>
+
+
+    <!-- =======================================================
+         LOADING
+    ======================================================== -->
+
+    <div
+      class="loading-screen"
+      id="loadingScreen"
+    >
+
+      <div class="loader-mark">
+        SN
+      </div>
+
+      <p>
+        Opening the Nest...
+      </p>
+
+    </div>
+
+
+    <!-- =======================================================
+         TOAST
+    ======================================================== -->
+
+    <div
+      class="toast"
+      id="toast"
+      role="status"
+    ></div>
+
+  </div>
+
+
+  <script src="app.js"></script>
+
+</body>
+</html>
