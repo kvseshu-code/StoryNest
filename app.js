@@ -1,101 +1,226 @@
 /* ============================================================
-   STORYNEST FRONTEND
-   GitHub Pages + Google Apps Script
-============================================================ */
+   STORYNEST
+   app.js
 
-"use strict";
+   Frontend API integration for:
+   Google Apps Script + Google Sheets backend
+
+   Existing API:
+   https://script.google.com/macros/s/AKfycbz4IKVE7jINJwwlT_9V4fZph9jbzlFiUbEOMBFIzics5nlVtDaf9l2kridmaodDkGj9/exec
+============================================================ */
 
 
 /* ============================================================
    CONFIGURATION
 ============================================================ */
 
-const STORYNEST_CONFIG = {
+const API_BASE =
+  "https://script.google.com/macros/s/AKfycbz4IKVE7jINJwwlT_9V4fZph9jbzlFiUbEOMBFIzics5nlVtDaf9l2kridmaodDkGj9/exec";
 
-  API_URL:
-    "https://script.google.com/macros/s/AKfycbz4IKVE7jINJwwlT_9V4fZph9jbzlFiUbEOMBFIzics5nlVtDaf9l2kridmaodDkGj9/exec",
 
-  PAGE_SIZE: 20,
+const CONFIG = {
 
-  AUTO_REFRESH_MINUTES: 10,
+  pageSize: 20,
 
-  DEFAULT_LANGUAGE: "English"
+  requestTimeout: 15000,
+
+  refreshInterval: 5 * 60 * 1000,
+
+  storagePrefix: "storynest_"
 
 };
 
 
 /* ============================================================
-   APPLICATION STATE
+   STATE
 ============================================================ */
 
 const state = {
 
-  stories: [],
+  currentPage:
+    "discover",
 
-  filteredStories: [],
+  currentStory:
+    null,
 
-  featured: null,
+  stories:
+    [],
 
-  currentStory: null,
+  allStories:
+    [],
 
-  currentView: "home",
+  featuredStories:
+    [],
 
-  currentPage: 1,
+  latestStories:
+    [],
 
-  searchQuery: "",
+  genres:
+    new Set(),
 
-  ageFilter: "",
+  search:
+    "",
 
-  readingFilter: "",
+  age:
+    "",
 
-  categoryFilter: "",
+  genre:
+    "",
 
-  isLoading: false,
+  page:
+    1,
 
-  apiOnline: false,
+  hasMore:
+    false,
 
-  audio: {
+  loading:
+    false,
 
-    enabled: false,
-
-    currentUrl: "",
-
-    currentTitle: "",
-
-    playing: false
-
-  }
+  audio:
+    {
+      story: null,
+      sources: [],
+      currentIndex: 0
+    }
 
 };
 
 
 /* ============================================================
-   DOM HELPERS
+   DOM
 ============================================================ */
 
 const $ = selector =>
   document.querySelector(selector);
 
 const $$ = selector =>
-  [...document.querySelectorAll(selector)];
+  Array.from(document.querySelectorAll(selector));
+
+
+const elements = {
+
+  statusDot:
+    $("#statusDot"),
+
+  statusText:
+    $("#statusText"),
+
+  statusRefresh:
+    $("#statusRefresh"),
+
+  storyLibrary:
+    $("#storyLibrary"),
+
+  libraryCount:
+    $("#libraryCount"),
+
+  loadMoreButton:
+    $("#loadMoreButton"),
+
+  featuredStories:
+    $("#featuredStories"),
+
+  latestStories:
+    $("#latestStories"),
+
+  continueSection:
+    $("#continueSection"),
+
+  continueCard:
+    $("#continueCard"),
+
+  storyDetail:
+    $("#storyDetail"),
+
+  storyAudio:
+    $("#storyAudio"),
+
+  audioPlayer:
+    $("#audioPlayer"),
+
+  audioTitle:
+    $("#audioTitle"),
+
+  audioPlay:
+    $("#audioPlay"),
+
+  audioBack:
+    $("#audioBack"),
+
+  audioForward:
+    $("#audioForward"),
+
+  audioProgress:
+    $("#audioProgress"),
+
+  audioCurrentTime:
+    $("#audioCurrentTime"),
+
+  audioDuration:
+    $("#audioDuration"),
+
+  audioSpeed:
+    $("#audioSpeed"),
+
+  audioClose:
+    $("#audioClose"),
+
+  readingPanel:
+    $("#readingPanel"),
+
+  searchOverlay:
+    $("#searchOverlay"),
+
+  globalSearch:
+    $("#globalSearch"),
+
+  globalSearchResults:
+    $("#globalSearchResults"),
+
+  toast:
+    $("#toast")
+
+};
 
 
 /* ============================================================
-   SAFE TEXT
+   INITIALIZATION
 ============================================================ */
 
-function escapeHTML(value) {
+document.addEventListener(
+  "DOMContentLoaded",
+  init
+);
 
-  if (value === null || value === undefined) {
-    return "";
-  }
 
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
+async function init() {
+
+  loadPreferences();
+
+  setupNavigation();
+
+  setupSearch();
+
+  setupFilters();
+
+  setupAudio();
+
+  setupReadingControls();
+
+  setupMenu();
+
+  setupThemeButton();
+
+  setupGlobalActions();
+
+  setupKeyboardControls();
+
+  renderContinueReading();
+
+  await loadHomeData();
+
+  startAutomaticRefresh();
+
 }
 
 
@@ -103,120 +228,225 @@ function escapeHTML(value) {
    API
 ============================================================ */
 
-async function apiRequest(action, params = {}) {
+async function apiRequest(
+  action,
+  params = {}
+) {
 
-  const url = new URL(STORYNEST_CONFIG.API_URL);
+  const url =
+    new URL(API_BASE);
 
-  url.searchParams.set("action", action);
+  url.searchParams.set(
+    "action",
+    action
+  );
 
-  Object.entries(params).forEach(([key, value]) => {
+  Object.entries(params).forEach(
+    ([key, value]) => {
 
-    if (
-      value !== undefined &&
-      value !== null &&
-      value !== ""
-    ) {
+      if (
+        value !== undefined &&
+        value !== null &&
+        value !== ""
+      ) {
 
-      url.searchParams.set(
-        key,
-        value
+        url.searchParams.set(
+          key,
+          value
+        );
+
+      }
+
+    }
+  );
+
+
+  const controller =
+    new AbortController();
+
+  const timeout =
+    setTimeout(
+      () =>
+        controller.abort(),
+      CONFIG.requestTimeout
+    );
+
+
+  try {
+
+    const response =
+      await fetch(
+        url.toString(),
+        {
+          method: "GET",
+          cache: "no-store",
+          signal: controller.signal
+        }
+      );
+
+
+    if (!response.ok) {
+
+      throw new Error(
+        `HTTP ${response.status}`
       );
 
     }
 
-  });
 
-  const response = await fetch(
-    url.toString(),
-    {
-      method: "GET",
-      cache: "no-store"
+    const data =
+      await response.json();
+
+
+    if (
+      data &&
+      data.success === false
+    ) {
+
+      throw new Error(
+        data.message ||
+        data.error ||
+        "StoryNest API error"
+      );
+
     }
-  );
 
-  if (!response.ok) {
 
-    throw new Error(
-      `API request failed: ${response.status}`
-    );
+    return data;
+
+  } catch (error) {
+
+    if (
+      error.name ===
+      "AbortError"
+    ) {
+
+      throw new Error(
+        "StoryNest request timed out."
+      );
+
+    }
+
+    throw error;
+
+  } finally {
+
+    clearTimeout(timeout);
 
   }
-
-  const data = await response.json();
-
-  if (!data || data.success === false) {
-
-    throw new Error(
-      data?.message ||
-      "StoryNest API returned an error."
-    );
-
-  }
-
-  return data;
 
 }
 
 
 /* ============================================================
-   STATUS
+   HOME DATA
 ============================================================ */
 
-function setStatus(
-  online,
-  message
-) {
+async function loadHomeData() {
 
-  state.apiOnline = online;
-
-  const dot = $("#statusDot");
-  const text = $("#statusText");
-
-  if (!dot || !text) {
-    return;
-  }
-
-  dot.classList.toggle(
-    "error",
-    !online
+  setStatus(
+    "loading",
+    "Connecting to StoryNest..."
   );
 
-  text.textContent =
-    message ||
-    (
-      online
-        ? "StoryNest is online"
-        : "StoryNest is temporarily unavailable"
+
+  try {
+
+    const response =
+      await apiRequest(
+        "stories",
+        {
+          page: 1,
+          pageSize: 50
+        }
+      );
+
+
+    const stories =
+      normalizeStories(
+        response?.data
+      );
+
+
+    state.allStories =
+      stories;
+
+    state.stories =
+      stories;
+
+
+    collectGenres(
+      stories
     );
 
-}
+
+    state.featuredStories =
+      stories.filter(
+        story =>
+          story.featured
+      );
 
 
-/* ============================================================
-   TOAST
-============================================================ */
+    state.latestStories =
+      [...stories]
+        .sort(
+          (a, b) =>
+            dateValue(b.published_at) -
+            dateValue(a.published_at)
+        )
+        .slice(0, 6);
 
-let toastTimer = null;
 
-function toast(message) {
+    renderFeatured();
 
-  const element = $("#toast");
+    renderLatest();
 
-  if (!element) {
-    return;
+    populateGenreFilter();
+
+    renderLibrary();
+
+    setStatus(
+      "online",
+      `${stories.length} ${
+        stories.length === 1
+          ? "story"
+          : "stories"
+      } available`
+    );
+
+
+    return stories;
+
+  } catch (error) {
+
+    console.error(
+      "StoryNest load error:",
+      error
+    );
+
+
+    setStatus(
+      "error",
+      "Unable to connect to StoryNest"
+    );
+
+
+    renderError(
+      elements.featuredStories,
+      error
+    );
+
+    renderError(
+      elements.latestStories,
+      error
+    );
+
+    renderError(
+      elements.storyLibrary,
+      error
+    );
+
   }
-
-  element.textContent = message;
-
-  element.classList.add("visible");
-
-  clearTimeout(toastTimer);
-
-  toastTimer = setTimeout(() => {
-
-    element.classList.remove("visible");
-
-  }, 2800);
 
 }
 
@@ -225,11 +455,25 @@ function toast(message) {
    NORMALIZATION
 ============================================================ */
 
-function normalizeStory(raw) {
+function normalizeStories(
+  input
+) {
 
-  if (!raw) {
-    return null;
+  if (!Array.isArray(input)) {
+    return [];
   }
+
+
+  return input.map(
+    normalizeStory
+  );
+
+}
+
+
+function normalizeStory(
+  raw = {}
+) {
 
   return {
 
@@ -240,7 +484,10 @@ function normalizeStory(raw) {
 
     slug:
       raw.slug ||
-      "",
+      slugify(
+        raw.title ||
+        ""
+      ),
 
     title:
       raw.title ||
@@ -256,36 +503,51 @@ function normalizeStory(raw) {
 
     category_id:
       raw.category_id ||
-      "",
-
-    category:
       raw.category ||
       "",
 
     genre_id:
       raw.genre_id ||
+      raw.genre ||
       "",
 
     genre:
       raw.genre ||
+      raw.genre_name ||
+      raw.genre_id ||
+      "",
+
+    category:
+      raw.category ||
+      raw.category_name ||
+      raw.category_id ||
       "",
 
     age_min:
-      Number(raw.age_min || 0),
+      toNumber(
+        raw.age_min,
+        0
+      ),
 
     age_max:
-      Number(raw.age_max || 0),
+      toNumber(
+        raw.age_max,
+        0
+      ),
 
     reading_level:
       raw.reading_level ||
-      "General",
+      "",
 
     reading_time:
-      Number(raw.reading_time || 0),
+      toNumber(
+        raw.reading_time,
+        0
+      ),
 
     language:
       raw.language ||
-      STORYNEST_CONFIG.DEFAULT_LANGUAGE,
+      "English",
 
     author_name:
       raw.author_name ||
@@ -296,18 +558,19 @@ function normalizeStory(raw) {
       "",
 
     episode_number:
-      Number(raw.episode_number || 0),
+      toNumber(
+        raw.episode_number,
+        0
+      ),
 
     featured:
-      Boolean(
-        raw.featured === true ||
-        String(raw.featured).toLowerCase() === "true"
+      toBoolean(
+        raw.featured
       ),
 
     audio_available:
-      Boolean(
-        raw.audio_available === true ||
-        String(raw.audio_available).toLowerCase() === "true"
+      toBoolean(
+        raw.audio_available
       ),
 
     published_at:
@@ -319,32 +582,16 @@ function normalizeStory(raw) {
       null,
 
     characters:
-      Array.isArray(raw.characters)
-        ? raw.characters
-        : [],
+      raw.characters ||
+      [],
 
     audio:
-      Array.isArray(raw.audio)
-        ? raw.audio
-        : [],
+      raw.audio ||
+      [],
 
     media:
-      Array.isArray(raw.media)
-        ? raw.media
-        : [],
-
-    reflection:
-      raw.reflection ||
-      raw.question ||
-      "",
-
-    activity:
-      raw.activity ||
-      "",
-
-    themes:
-      raw.themes ||
-      ""
+      raw.media ||
+      []
 
   };
 
@@ -352,854 +599,688 @@ function normalizeStory(raw) {
 
 
 /* ============================================================
-   LOAD STORIES
+   STORY DETAIL
 ============================================================ */
 
-async function loadStories() {
+async function openStory(
+  identifier
+) {
 
-  if (state.isLoading) {
-    return;
-  }
-
-  state.isLoading = true;
-
-  setStatus(
-    true,
-    "Updating StoryNest..."
+  showPage(
+    "story"
   );
+
+
+  elements.storyDetail.innerHTML =
+    loadingStoryMarkup();
+
 
   try {
 
     const response =
       await apiRequest(
-        "stories",
-        {
-          page: 1,
-          pageSize:
-            STORYNEST_CONFIG.PAGE_SIZE
-        }
-      );
-
-    const rows =
-      Array.isArray(response.data)
-        ? response.data
-        : [];
-
-    state.stories =
-      rows
-        .map(normalizeStory)
-        .filter(Boolean);
-
-    state.featured =
-      state.stories.find(
-        story => story.featured
-      ) ||
-      state.stories[0] ||
-      null;
-
-    state.filteredStories =
-      [...state.stories];
-
-    renderHome();
-
-    renderLibrary();
-
-    setStatus(
-      true,
-      `StoryNest online · ${state.stories.length} stories`
-    );
-
-  } catch (error) {
-
-    console.error(error);
-
-    setStatus(
-      false,
-      "Unable to reach StoryNest"
-    );
-
-    renderError(
-      "latestContainer",
-      "Stories could not be loaded."
-    );
-
-    renderError(
-      "storyLibrary",
-      "The StoryNest library is temporarily unavailable."
-    );
-
-  } finally {
-
-    state.isLoading = false;
-
-    hideLoading();
-
-  }
-
-}
-
-
-/* ============================================================
-   LOAD STORY DETAIL
-============================================================ */
-
-async function loadStory(identifier) {
-
-  if (!identifier) {
-    return;
-  }
-
-  showLoading();
-
-  try {
-
-    let response;
-
-    /*
-      Try slug first.
-    */
-
-    response =
-      await apiRequest(
         "story",
         {
-          slug: identifier
+          slug:
+            identifier
         }
       );
 
-    let payload =
-      response.story ||
-      response.data ||
+
+    const payload =
+      response?.story ||
+      response?.data ||
       response;
 
-    /*
-      Some backend versions return:
-      {
-        story: {
-          story: {...},
-          content: ...
-        }
-      }
-    */
 
-    if (
-      payload &&
-      payload.story &&
-      typeof payload.story === "object"
-    ) {
-
-      payload = payload;
-
-    }
-
-    let metadata =
-      payload?.story ||
-      payload;
-
-    const story =
-      normalizeStory(metadata);
-
-    if (!story) {
-      throw new Error(
-        "Story not found."
+    const storyBase =
+      normalizeStory(
+        payload?.story ||
+        payload
       );
-    }
 
-    story.content =
-      payload?.content ||
-      story.content;
 
-    story.characters =
-      Array.isArray(payload?.characters)
-        ? payload.characters
-        : story.characters;
+    const story = {
 
-    story.audio =
-      Array.isArray(payload?.audio)
-        ? payload.audio
-        : story.audio;
+      ...storyBase,
 
-    story.media =
-      Array.isArray(payload?.media)
-        ? payload.media
-        : story.media;
+      content:
+        payload?.content ??
+        storyBase.content,
 
-    state.currentStory = story;
+      characters:
+        normalizeCharacters(
+          payload?.characters
+        ),
 
-    renderReader(story);
+      audio:
+        normalizeAudio(
+          payload?.audio
+        ),
 
-    showView("reader");
+      media:
+        payload?.media ||
+        []
 
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth"
-    });
+    };
+
+
+    state.currentStory =
+      story;
+
+
+    saveLastStory(
+      story
+    );
+
+
+    renderStory(
+      story
+    );
+
+
+    setupStoryAudio(
+      story
+    );
+
+
+    updateReadingProgress(
+      story
+    );
+
+
+    window.scrollTo(
+      {
+        top: 0,
+        behavior: "smooth"
+      }
+    );
 
   } catch (error) {
 
-    console.error(error);
-
-    toast(
-      "Unable to open this story."
+    console.error(
+      "Story detail error:",
+      error
     );
 
-  } finally {
 
-    hideLoading();
-
-  }
-
-}
-
-
-/* ============================================================
-   HOME
-============================================================ */
-
-function renderHome() {
-
-  renderFeatured();
-
-  renderLatest();
-
-}
-
-
-/* ============================================================
-   FEATURED
-============================================================ */
-
-function renderFeatured() {
-
-  const container =
-    $("#featuredContainer");
-
-  if (!container) {
-    return;
-  }
-
-  if (!state.featured) {
-
-    container.innerHTML =
-      emptyState(
-        "No featured story yet."
+    elements.storyDetail.innerHTML =
+      errorStoryMarkup(
+        error
       );
 
-    return;
-
   }
 
-  const story =
-    state.featured;
-
-  container.innerHTML = `
-
-    <article class="featured-card">
-
-      <p class="eyebrow">
-        FEATURED STORY
-      </p>
-
-      <h3>
-        ${escapeHTML(story.title)}
-      </h3>
-
-      <p>
-        ${escapeHTML(story.description)}
-      </p>
-
-      <div>
-
-        ${storyMeta(story)}
-
-        <button
-          class="story-card-action"
-          data-story="${escapeHTML(story.slug || story.story_id)}"
-        >
-          Begin reading →
-        </button>
-
-      </div>
-
-    </article>
-
-  `;
-
-  bindStoryButtons();
-
 }
 
 
 /* ============================================================
-   LATEST
+   STORY CONTENT NORMALIZATION
 ============================================================ */
 
-function renderLatest() {
-
-  const container =
-    $("#latestContainer");
-
-  if (!container) {
-    return;
-  }
-
-  const latest =
-    [...state.stories]
-      .sort(
-        (a, b) =>
-          new Date(b.published_at || 0) -
-          new Date(a.published_at || 0)
-      )
-      .slice(0, 6);
-
-  if (!latest.length) {
-
-    container.innerHTML =
-      emptyState(
-        "New stories are coming soon."
-      );
-
-    return;
-
-  }
-
-  container.innerHTML =
-    latest
-      .map(
-        (story, index) =>
-          storyCard(
-            story,
-            index + 1
-          )
-      )
-      .join("");
-
-  bindStoryButtons();
-
-}
-
-
-/* ============================================================
-   STORY CARD
-============================================================ */
-
-function storyCard(
-  story,
-  index
-) {
-
-  const identifier =
-    story.slug ||
-    story.story_id;
-
-  return `
-
-    <article class="story-card">
-
-      <span class="card-number">
-        ${String(index).padStart(2, "0")}
-      </span>
-
-      <h3>
-        ${escapeHTML(story.title)}
-      </h3>
-
-      <p>
-        ${escapeHTML(
-          story.description
-        )}
-      </p>
-
-      <div class="story-card-meta">
-
-        ${story.age_min || story.age_max
-          ? `<span class="story-tag">
-              Ages ${escapeHTML(
-                story.age_min
-              )}–${escapeHTML(
-                story.age_max
-              )}
-            </span>`
-          : ""
-        }
-
-        <span class="story-tag">
-          ${escapeHTML(
-            story.reading_level
-          )}
-        </span>
-
-        ${
-          story.reading_time
-            ? `<span class="story-tag">
-                ${story.reading_time} min
-              </span>`
-            : ""
-        }
-
-      </div>
-
-      <button
-        class="story-card-action"
-        data-story="${escapeHTML(identifier)}"
-      >
-        Read story →
-      </button>
-
-    </article>
-
-  `;
-
-}
-
-
-/* ============================================================
-   STORY META
-============================================================ */
-
-function storyMeta(story) {
-
-  return `
-
-    <div class="story-card-meta">
-
-      ${
-        story.age_min || story.age_max
-          ? `<span class="story-tag">
-              Ages ${escapeHTML(story.age_min)}
-              –
-              ${escapeHTML(story.age_max)}
-            </span>`
-          : ""
-      }
-
-      <span class="story-tag">
-        ${escapeHTML(story.reading_level)}
-      </span>
-
-      ${
-        story.reading_time
-          ? `<span class="story-tag">
-              ${story.reading_time} min
-            </span>`
-          : ""
-      }
-
-    </div>
-
-  `;
-
-}
-
-
-/* ============================================================
-   LIBRARY
-============================================================ */
-
-function renderLibrary() {
-
-  const container =
-    $("#storyLibrary");
-
-  if (!container) {
-    return;
-  }
-
-  const stories =
-    applyFilters(
-      state.stories
-    );
-
-  state.filteredStories =
-    stories;
-
-  const visible =
-    stories.slice(
-      0,
-      state.currentPage *
-        STORYNEST_CONFIG.PAGE_SIZE
-    );
-
-  if (!visible.length) {
-
-    container.innerHTML =
-      emptyState(
-        "No stories match your search."
-      );
-
-    updateResultCount(0);
-
-    return;
-
-  }
-
-  container.innerHTML =
-    visible
-      .map(
-        (story, index) =>
-          storyCard(
-            story,
-            index + 1
-          )
-      )
-      .join("");
-
-  updateResultCount(
-    stories.length
-  );
-
-  updateLoadMore(
-    visible.length,
-    stories.length
-  );
-
-  bindStoryButtons();
-
-}
-
-
-/* ============================================================
-   FILTERS
-============================================================ */
-
-function applyFilters(
-  stories
-) {
-
-  return stories.filter(
-    story => {
-
-      const query =
-        state.searchQuery
-          .trim()
-          .toLowerCase();
-
-      const searchable = [
-        story.title,
-        story.subtitle,
-        story.description,
-        story.genre,
-        story.category,
-        story.author_name
-      ]
-        .join(" ")
-        .toLowerCase();
-
-      if (
-        query &&
-        !searchable.includes(query)
-      ) {
-
-        return false;
-
-      }
-
-      if (
-        state.ageFilter &&
-        !ageMatches(
-          story,
-          state.ageFilter
-        )
-      ) {
-
-        return false;
-
-      }
-
-      if (
-        state.readingFilter &&
-        story.reading_level !==
-          state.readingFilter
-      ) {
-
-        return false;
-
-      }
-
-      if (
-        state.categoryFilter
-      ) {
-
-        const category =
-          (
-            story.category ||
-            story.genre ||
-            ""
-          ).toLowerCase();
-
-        if (
-          !category.includes(
-            state.categoryFilter.toLowerCase()
-          )
-        ) {
-
-          return false;
-
-        }
-
-      }
-
-      return true;
-
-    }
-  );
-
-}
-
-
-/* ============================================================
-   AGE MATCH
-============================================================ */
-
-function ageMatches(
-  story,
-  range
-) {
-
-  const [min, max] =
-    range
-      .split("-")
-      .map(Number);
-
-  const storyMin =
-    Number(story.age_min || 0);
-
-  const storyMax =
-    Number(story.age_max || 99);
-
-  return (
-    storyMin <= max &&
-    storyMax >= min
-  );
-
-}
-
-
-/* ============================================================
-   RESULT COUNT
-============================================================ */
-
-function updateResultCount(
-  count
-) {
-
-  const element =
-    $("#resultCount");
-
-  if (!element) {
-    return;
-  }
-
-  element.textContent =
-    `${count} ${
-      count === 1
-        ? "story"
-        : "stories"
-    }`;
-
-}
-
-
-/* ============================================================
-   LOAD MORE
-============================================================ */
-
-function updateLoadMore(
-  visible,
-  total
-) {
-
-  const container =
-    $("#loadMoreContainer");
-
-  const button =
-    $("#loadMoreButton");
-
-  if (!container || !button) {
-    return;
-  }
-
-  const hasMore =
-    visible < total;
-
-  container.style.display =
-    hasMore
-      ? "flex"
-      : "none";
-
-}
-
-
-/* ============================================================
-   READER
-============================================================ */
-
-function renderReader(
-  story
-) {
-
-  $("#readerKicker").textContent =
-    story.genre
-      ? story.genre.toUpperCase()
-      : "STORYNEST ORIGINAL";
-
-  $("#readerTitle").textContent =
-    story.title;
-
-  $("#readerSubtitle").textContent =
-    story.subtitle ||
-    story.description ||
-    "";
-
-  $("#readerAge").textContent =
-    story.age_min || story.age_max
-      ? `Ages ${story.age_min}–${story.age_max}`
-      : "All ages";
-
-  $("#readerTime").textContent =
-    story.reading_time
-      ? `${story.reading_time} min`
-      : "Open reading";
-
-  $("#readerLevel").textContent =
-    story.reading_level;
-
-  renderStoryContent(
-    story.content
-  );
-
-  renderCharacters(
-    story.characters
-  );
-
-  renderReflection(
-    story
-  );
-
-  renderActivity(
-    story
-  );
-
-  renderRelated(
-    story
-  );
-
-  setupReaderProgress();
-
-  setupAudio(
-    story
-  );
-
-}
-
-
-/* ============================================================
-   CONTENT
-============================================================ */
-
-function renderStoryContent(
+function normalizeContent(
   content
 ) {
 
-  const container =
-    $("#readerContent");
-
-  if (!container) {
-    return;
-  }
-
   if (!content) {
-
-    container.innerHTML = `
-
-      <p>
-        This story is being prepared for publication.
-      </p>
-
-    `;
-
-    return;
-
+    return "";
   }
 
-  /*
-    Content may arrive as:
-      string
-      array
-      object
-  */
-
-  let paragraphs = [];
 
   if (
-    typeof content === "string"
+    typeof content ===
+    "string"
   ) {
 
-    paragraphs =
+    return safeTextToParagraphs(
       content
-        .split(/\n{2,}|\r\n\r\n/)
-        .map(
-          value => value.trim()
-        )
-        .filter(Boolean);
+    );
 
-  } else if (
+  }
+
+
+  if (
     Array.isArray(content)
   ) {
 
-    paragraphs =
-      content
-        .map(
-          item =>
-            typeof item === "string"
-              ? item
-              : item.text ||
-                item.content ||
-                ""
-        )
-        .filter(Boolean);
+    return content
+      .map(
+        item => {
 
-  } else if (
-    typeof content === "object"
+          if (
+            typeof item ===
+            "string"
+          ) {
+            return item;
+          }
+
+          return (
+            item.text ||
+            item.content ||
+            item.paragraph ||
+            ""
+          );
+
+        }
+      )
+      .filter(Boolean)
+      .map(
+        text =>
+          `<p>${escapeHTML(
+            text
+          )}</p>`
+      )
+      .join("");
+
+  }
+
+
+  if (
+    typeof content ===
+    "object"
   ) {
 
-    paragraphs =
-      Object.values(content)
-        .filter(
-          value =>
-            typeof value === "string"
-        );
+    if (
+      Array.isArray(
+        content.paragraphs
+      )
+    ) {
+
+      return normalizeContent(
+        content.paragraphs
+      );
+
+    }
+
+
+    if (
+      Array.isArray(
+        content.sections
+      )
+    ) {
+
+      return content.sections
+        .map(
+          section => {
+
+            const heading =
+              section.heading
+                ? `<h3>${escapeHTML(
+                    section.heading
+                  )}</h3>`
+                : "";
+
+            const body =
+              normalizeContent(
+                section.text ||
+                section.content ||
+                section.paragraphs
+              );
+
+            return heading + body;
+
+          }
+        )
+        .join("");
+
+    }
+
+
+    const text =
+      content.text ||
+      content.body ||
+      content.story ||
+      content.content ||
+      "";
+
+
+    if (text) {
+
+      return safeTextToParagraphs(
+        text
+      );
+
+    }
 
   }
 
-  if (!paragraphs.length) {
 
-    container.innerHTML =
-      "<p>The story content is being prepared.</p>";
+  return "";
 
-    return;
+}
 
-  }
 
-  /*
-    IMPORTANT:
-    We intentionally use textContent here
-    rather than injecting CMS HTML.
-    This prevents unsafe HTML execution.
-  */
+function safeTextToParagraphs(
+  text
+) {
 
-  container.innerHTML = "";
+  return String(text)
+    .split(
+      /\n\s*\n|\r\n\s*\r\n/
+    )
+    .map(
+      paragraph =>
+        paragraph.trim()
+    )
+    .filter(Boolean)
+    .map(
+      paragraph =>
+        `<p>${escapeHTML(
+          paragraph
+        )}</p>`
+    )
+    .join("");
 
-  paragraphs.forEach(
-    paragraph => {
+}
 
-      const p =
-        document.createElement("p");
 
-      p.textContent =
-        paragraph;
+/* ============================================================
+   STORY RENDER
+============================================================ */
 
-      container.appendChild(p);
+function renderStory(
+  story
+) {
+
+  const contentHTML =
+    normalizeContent(
+      story.content
+    );
+
+
+  const hasContent =
+    contentHTML.trim().length > 0;
+
+
+  const characters =
+    renderCharacters(
+      story.characters
+    );
+
+
+  const reflection =
+    extractReflection(
+      story
+    );
+
+
+  const audioAvailable =
+    story.audio_available ||
+    story.audio.length > 0;
+
+
+  elements.storyDetail.innerHTML = `
+
+    <article>
+
+      <header class="story-header">
+
+        <span class="original-label">
+          StoryNest Original
+        </span>
+
+        <h1>
+          ${escapeHTML(
+            story.title
+          )}
+        </h1>
+
+        ${
+          story.subtitle
+            ? `
+              <p class="story-subtitle">
+                ${escapeHTML(
+                  story.subtitle
+                )}
+              </p>
+            `
+            : ""
+        }
+
+        ${
+          story.description
+            ? `
+              <p class="story-description">
+                ${escapeHTML(
+                  story.description
+                )}
+              </p>
+            `
+            : ""
+        }
+
+        <div class="story-metadata">
+
+          <span>
+            ${formatGenre(
+              story.genre
+            )}
+          </span>
+
+          <span>·</span>
+
+          <span>
+            Ages ${formatAgeRange(
+              story.age_min,
+              story.age_max
+            )}
+          </span>
+
+          ${
+            story.reading_time
+              ? `
+                <span>·</span>
+                <span>
+                  ${story.reading_time} min read
+                </span>
+              `
+              : ""
+          }
+
+          ${
+            story.language
+              ? `
+                <span>·</span>
+                <span>
+                  ${escapeHTML(
+                    story.language
+                  )}
+                </span>
+              `
+              : ""
+          }
+
+        </div>
+
+
+        <div class="story-actions">
+
+          <button
+            type="button"
+            class="story-read-button"
+            data-story-action="read"
+          >
+            Read Story
+          </button>
+
+          ${
+            audioAvailable
+              ? `
+                <button
+                  type="button"
+                  data-story-action="listen"
+                >
+                  ♪ Listen
+                </button>
+
+                <button
+                  type="button"
+                  data-story-action="readlisten"
+                >
+                  Read + Listen
+                </button>
+              `
+              : ""
+          }
+
+          <button
+            type="button"
+            data-story-action="bookmark"
+          >
+            ${isBookmarked(
+              story.story_id
+            )
+              ? "★ Saved"
+              : "☆ Save"}
+          </button>
+
+          <button
+            type="button"
+            data-story-action="settings"
+          >
+            Aa
+          </button>
+
+        </div>
+
+      </header>
+
+
+      <div class="reading-toolbar">
+
+        <div class="reading-toolbar-inner">
+
+          <button
+            type="button"
+            data-story-action="settings"
+          >
+            Aa Reading settings
+          </button>
+
+          ${
+            audioAvailable
+              ? `
+                <button
+                  type="button"
+                  data-story-action="listen"
+                >
+                  ♪ Listen
+                </button>
+              `
+              : ""
+          }
+
+          <button
+            type="button"
+            data-story-action="bookmark"
+          >
+            ${isBookmarked(
+              story.story_id
+            )
+              ? "★ Saved"
+              : "☆ Save"}
+          </button>
+
+        </div>
+
+      </div>
+
+
+      <div
+        class="story-reading-area"
+        id="storyReadingArea"
+      >
+
+        ${
+          hasContent
+            ? addParagraphClasses(
+                contentHTML
+              )
+            : `
+              <div class="empty-card">
+                <strong>
+                  This story is being prepared.
+                </strong>
+                <p>
+                  The story content has not been published yet.
+                </p>
+              </div>
+            `
+        }
+
+      </div>
+
+
+      <section class="story-after">
+
+        <div class="story-after-grid">
+
+          ${
+            characters
+              ? `
+                <div class="info-panel">
+                  <h3>Meet the characters</h3>
+                  ${characters}
+                </div>
+              `
+              : ""
+          }
+
+
+          <div class="info-panel">
+
+            <h3>Think about it</h3>
+
+            <p>
+              ${escapeHTML(
+                reflection.question ||
+                "What did this story make you think about?"
+              )}
+            </p>
+
+          </div>
+
+
+          <div class="info-panel">
+
+            <h3>Try this</h3>
+
+            <p>
+              ${escapeHTML(
+                reflection.activity ||
+                "Create something inspired by the story."
+              )}
+            </p>
+
+          </div>
+
+
+          ${
+            story.description
+              ? `
+                <div class="info-panel">
+
+                  <h3>What this story explores</h3>
+
+                  <p>
+                    ${escapeHTML(
+                      story.description
+                    )}
+                  </p>
+
+                </div>
+              `
+              : ""
+          }
+
+        </div>
+
+
+        <div class="keep-reading">
+
+          <span class="eyebrow">
+            Keep reading
+          </span>
+
+          <h2>
+            Another story is waiting.
+          </h2>
+
+          <p>
+            Continue exploring original stories
+            created by StoryNest.
+          </p>
+
+          <button
+            type="button"
+            class="primary-button"
+            data-nav="stories"
+          >
+            Browse stories →
+          </button>
+
+        </div>
+
+      </section>
+
+    </article>
+  `;
+
+
+  bindStoryActions();
+
+
+  observeReadingProgress();
+
+}
+
+
+/* ============================================================
+   STORY ACTIONS
+============================================================ */
+
+function bindStoryActions() {
+
+  $$(
+    "[data-story-action]"
+  ).forEach(
+    button => {
+
+      button.addEventListener(
+        "click",
+        () => {
+
+          const action =
+            button.dataset.storyAction;
+
+
+          switch(action) {
+
+            case "read":
+
+              scrollToStory();
+              break;
+
+
+            case "listen":
+
+              startStoryAudio();
+              break;
+
+
+            case "readlisten":
+
+              scrollToStory();
+
+              setTimeout(
+                () =>
+                  startStoryAudio(),
+                250
+              );
+
+              break;
+
+
+            case "bookmark":
+
+              toggleBookmark(
+                state.currentStory
+              );
+
+              refreshStoryActionButtons();
+
+              break;
+
+
+            case "settings":
+
+              openReadingPanel();
+              break;
+
+          }
+
+        }
+      );
 
     }
   );
@@ -1207,69 +1288,158 @@ function renderStoryContent(
 }
 
 
+function scrollToStory() {
+
+  const area =
+    $("#storyReadingArea");
+
+  if (!area) return;
+
+
+  area.scrollIntoView(
+    {
+      behavior: "smooth",
+      block: "start"
+    }
+  );
+
+}
+
+
 /* ============================================================
-   CHARACTERS
+   CHARACTER NORMALIZATION
 ============================================================ */
+
+function normalizeCharacters(
+  characters
+) {
+
+  if (
+    typeof characters ===
+    "string"
+  ) {
+
+    try {
+
+      characters =
+        JSON.parse(
+          characters
+        );
+
+    } catch {
+
+      return [];
+
+    }
+
+  }
+
+
+  if (
+    !Array.isArray(
+      characters
+    )
+  ) {
+
+    return [];
+
+  }
+
+
+  return characters
+    .map(
+      character => {
+
+        if (
+          typeof character ===
+          "string"
+        ) {
+
+          return {
+            name:
+              character,
+            role:
+              ""
+          };
+
+        }
+
+
+        return {
+
+          name:
+            character.name ||
+            character.character ||
+            "",
+
+          role:
+            character.role ||
+            character.description ||
+            ""
+
+        };
+
+      }
+    )
+    .filter(
+      character =>
+        character.name
+    );
+
+}
+
 
 function renderCharacters(
   characters
 ) {
 
-  const section =
-    $("#charactersSection");
-
-  const container =
-    $("#charactersContainer");
-
   if (
-    !Array.isArray(characters) ||
+    !characters ||
     !characters.length
   ) {
 
-    section.style.display =
-      "none";
-
-    return;
+    return "";
 
   }
 
-  section.style.display =
-    "block";
 
-  container.innerHTML =
-    characters
-      .map(
-        character => {
+  return `
 
-          const name =
-            character.name ||
-            character.character ||
-            "Character";
+    <div class="character-list">
 
-          const role =
-            character.role ||
-            character.description ||
-            "";
+      ${characters
+        .map(
+          character => `
 
-          return `
-
-            <div class="character-card">
+            <div class="character">
 
               <strong>
-                ${escapeHTML(name)}
+                ${escapeHTML(
+                  character.name
+                )}
               </strong>
 
-              <small>
-                ${escapeHTML(role)}
-              </small>
+              ${
+                character.role
+                  ? `
+                    <span>
+                      ${escapeHTML(
+                        character.role
+                      )}
+                    </span>
+                  `
+                  : ""
+              }
 
             </div>
 
-          `;
+          `
+        )
+        .join("")}
 
-        }
-      )
-      .join("");
+    </div>
+
+  `;
 
 }
 
@@ -1278,206 +1448,68 @@ function renderCharacters(
    REFLECTION
 ============================================================ */
 
-function renderReflection(
+function extractReflection(
   story
 ) {
 
-  const section =
-    $("#reflectionSection");
-
-  const container =
-    $("#reflectionContent");
-
-  const value =
-    story.reflection;
-
-  if (!value) {
-
-    section.style.display =
-      "none";
-
-    return;
-
-  }
-
-  section.style.display =
-    "block";
-
-  container.textContent =
-    value;
-
-}
+  const content =
+    story.content;
 
 
-/* ============================================================
-   ACTIVITY
-============================================================ */
+  const question =
+    story.question ||
+    story.think_about ||
+    story.reflection_question ||
+    "";
 
-function renderActivity(
-  story
-) {
 
-  const section =
-    $("#activitySection");
+  const activity =
+    story.activity ||
+    story.try_this ||
+    story.reflection_activity ||
+    "";
 
-  const container =
-    $("#activityContent");
 
-  const value =
-    story.activity;
+  if (
+    question ||
+    activity
+  ) {
 
-  if (!value) {
-
-    section.style.display =
-      "none";
-
-    return;
+    return {
+      question,
+      activity
+    };
 
   }
 
-  section.style.display =
-    "block";
 
-  container.textContent =
-    value;
+  if (
+    typeof content ===
+    "object" &&
+    content
+  ) {
 
-}
+    return {
 
+      question:
+        content.question ||
+        content.think_about ||
+        "",
 
-/* ============================================================
-   RELATED
-============================================================ */
-
-function renderRelated(
-  current
-) {
-
-  const container =
-    $("#relatedStories");
-
-  if (!container) {
-    return;
-  }
-
-  const related =
-    state.stories
-      .filter(
-        story =>
-          story.story_id !==
-          current.story_id
-      )
-      .filter(
-        story => {
-
-          const sameGenre =
-            current.genre &&
-            story.genre &&
-            story.genre ===
-              current.genre;
-
-          const sameCategory =
-            current.category &&
-            story.category &&
-            story.category ===
-              current.category;
-
-          return (
-            sameGenre ||
-            sameCategory
-          );
-
-        }
-      )
-      .slice(0, 3);
-
-  if (!related.length) {
-
-    container.innerHTML =
-      emptyState(
-        "More stories are coming soon."
-      );
-
-    return;
-
-  }
-
-  container.innerHTML =
-    related
-      .map(
-        (story, index) =>
-          storyCard(
-            story,
-            index + 1
-          )
-      )
-      .join("");
-
-  bindStoryButtons();
-
-}
-
-
-/* ============================================================
-   READER PROGRESS
-============================================================ */
-
-function setupReaderProgress() {
-
-  const bar =
-    $("#readerProgressBar");
-
-  const reader =
-    $(".reader");
-
-  if (!bar || !reader) {
-    return;
-  }
-
-  const update =
-    () => {
-
-      const rect =
-        reader.getBoundingClientRect();
-
-      const total =
-        reader.offsetHeight;
-
-      const viewport =
-        window.innerHeight;
-
-      const passed =
-        Math.max(
-          0,
-          -rect.top
-        );
-
-      const available =
-        Math.max(
-          1,
-          total - viewport
-        );
-
-      const percent =
-        Math.min(
-          100,
-          (passed / available) * 100
-        );
-
-      bar.style.width =
-        `${percent}%`;
+      activity:
+        content.activity ||
+        content.try_this ||
+        ""
 
     };
 
-  window.removeEventListener(
-    "scroll",
-    update
-  );
+  }
 
-  window.addEventListener(
-    "scroll",
-    update,
-    { passive: true }
-  );
+
+  return {
+    question: "",
+    activity: ""
+  };
 
 }
 
@@ -1486,853 +1518,653 @@ function setupReaderProgress() {
    AUDIO
 ============================================================ */
 
-function setupAudio(
+function normalizeAudio(
+  audio
+) {
+
+  if (!audio) {
+    return [];
+  }
+
+
+  if (
+    typeof audio ===
+    "string"
+  ) {
+
+    try {
+
+      audio =
+        JSON.parse(
+          audio
+        );
+
+    } catch {
+
+      return audio
+        ? [{
+            url: audio,
+            title:
+              "Story narration"
+          }]
+        : [];
+
+    }
+
+  }
+
+
+  if (
+    !Array.isArray(
+      audio
+    )
+  ) {
+
+    if (
+      audio.url ||
+      audio.audio_url ||
+      audio.src
+    ) {
+
+      return [
+        audio
+      ];
+
+    }
+
+    return [];
+
+  }
+
+
+  return audio
+    .map(
+      item => {
+
+        if (
+          typeof item ===
+          "string"
+        ) {
+
+          return {
+            url:
+              item,
+            title:
+              "Story narration"
+          };
+
+        }
+
+
+        return {
+
+          url:
+            item.url ||
+            item.audio_url ||
+            item.src ||
+            item.file_url ||
+            "",
+
+          title:
+            item.title ||
+            item.name ||
+            "Story narration",
+
+          paragraph:
+            item.paragraph ||
+            item.paragraph_index ||
+            null,
+
+          duration:
+            item.duration ||
+            null
+
+        };
+
+      }
+    )
+    .filter(
+      item =>
+        item.url
+    );
+
+}
+
+
+function setupStoryAudio(
   story
 ) {
 
-  const player =
-    $("#audioPlayer");
+  stopAudio();
 
-  const audio =
-    $("#audioElement");
+
+  state.audio.story =
+    story;
+
+  state.audio.sources =
+    normalizeAudio(
+      story.audio
+    );
+
+  state.audio.currentIndex =
+    0;
+
 
   if (
-    !player ||
-    !audio
+    state.audio.sources.length
   ) {
+
+    const source =
+      state.audio.sources[0];
+
+
+    elements.storyAudio.src =
+      source.url;
+
+
+    elements.audioTitle.textContent =
+      story.title;
+
+
+    showAudioPlayer();
+
+  } else {
+
+    hideAudioPlayer();
+
+  }
+
+}
+
+
+function startStoryAudio() {
+
+  const sources =
+    state.audio.sources;
+
+
+  if (
+    !sources.length
+  ) {
+
+    showToast(
+      "Audio narration is not available for this story yet."
+    );
+
+    return;
+
+  }
+
+
+  showAudioPlayer();
+
+
+  if (
+    !elements.storyAudio.src
+  ) {
+
+    loadCurrentAudioSource();
+
+  }
+
+
+  elements.storyAudio
+    .play()
+    .then(
+      () => {
+
+        updateAudioButton();
+
+      }
+    )
+    .catch(
+      error => {
+
+        console.error(
+          "Audio playback error:",
+          error
+        );
+
+        showToast(
+          "The narration could not be started."
+        );
+
+      }
+    );
+
+}
+
+
+function loadCurrentAudioSource() {
+
+  const source =
+    state.audio.sources[
+      state.audio.currentIndex
+    ];
+
+
+  if (!source) {
     return;
   }
 
+
+  elements.storyAudio.src =
+    source.url;
+
+  elements.storyAudio.load();
+
+  elements.audioTitle.textContent =
+    source.title ||
+    state.audio.story?.title ||
+    "Story narration";
+
+}
+
+
+function playNextAudio() {
+
+  const next =
+    state.audio.currentIndex + 1;
+
+
+  if (
+    next >=
+    state.audio.sources.length
+  ) {
+
+    elements.storyAudio.pause();
+
+    elements.audioPlay.textContent =
+      "▶";
+
+    return;
+
+  }
+
+
+  state.audio.currentIndex =
+    next;
+
+
+  loadCurrentAudioSource();
+
+
+  elements.storyAudio
+    .play()
+    .catch(
+      () => {}
+    );
+
+}
+
+
+function playPreviousAudio() {
+
+  const previous =
+    state.audio.currentIndex - 1;
+
+
+  if (
+    previous < 0
+  ) {
+
+    elements.storyAudio.currentTime =
+      0;
+
+    return;
+
+  }
+
+
+  state.audio.currentIndex =
+    previous;
+
+
+  loadCurrentAudioSource();
+
+
+  elements.storyAudio
+    .play()
+    .catch(
+      () => {}
+    );
+
+}
+
+
+function setupAudio() {
+
+  elements.audioPlay
+    .addEventListener(
+      "click",
+      () => {
+
+        if (
+          !elements.storyAudio.src
+        ) {
+
+          startStoryAudio();
+
+          return;
+
+        }
+
+
+        if (
+          elements.storyAudio.paused
+        ) {
+
+          elements.storyAudio
+            .play()
+            .catch(
+              () => {}
+            );
+
+        } else {
+
+          elements.storyAudio.pause();
+
+        }
+
+      }
+    );
+
+
+  elements.audioForward
+    .addEventListener(
+      "click",
+      playNextAudio
+    );
+
+
+  elements.audioBack
+    .addEventListener(
+      "click",
+      playPreviousAudio
+    );
+
+
+  elements.storyAudio
+    .addEventListener(
+      "play",
+      updateAudioButton
+    );
+
+
+  elements.storyAudio
+    .addEventListener(
+      "pause",
+      updateAudioButton
+    );
+
+
+  elements.storyAudio
+    .addEventListener(
+      "timeupdate",
+      updateAudioProgress
+    );
+
+
+  elements.storyAudio
+    .addEventListener(
+      "loadedmetadata",
+      updateAudioDuration
+    );
+
+
+  elements.storyAudio
+    .addEventListener(
+      "ended",
+      playNextAudio
+    );
+
+
+  elements.audioProgress
+    .addEventListener(
+      "input",
+      () => {
+
+        if (
+          elements.storyAudio.duration
+        ) {
+
+          elements.storyAudio.currentTime =
+            (
+              Number(
+                elements.audioProgress.value
+              ) /
+              100
+            ) *
+            elements.storyAudio.duration;
+
+        }
+
+      }
+    );
+
+
+  elements.audioSpeed
+    .addEventListener(
+      "change",
+      () => {
+
+        const speed =
+          Number(
+            elements.audioSpeed.value
+          );
+
+
+        elements.storyAudio.playbackRate =
+          speed;
+
+
+        localStorage.setItem(
+          CONFIG.storagePrefix +
+          "audio_speed",
+          String(speed)
+        );
+
+      }
+    );
+
+
+  elements.audioClose
+    .addEventListener(
+      "click",
+      () => {
+
+        elements.storyAudio.pause();
+
+        hideAudioPlayer();
+
+      }
+    );
+
+
+  const savedSpeed =
+    localStorage.getItem(
+      CONFIG.storagePrefix +
+      "audio_speed"
+    );
+
+
+  if (savedSpeed) {
+
+    elements.audioSpeed.value =
+      savedSpeed;
+
+    elements.storyAudio.playbackRate =
+      Number(
+        savedSpeed
+      );
+
+  }
+
+}
+
+
+function updateAudioButton() {
+
+  elements.audioPlay.textContent =
+    elements.storyAudio.paused
+      ? "▶"
+      : "Ⅱ";
+
+}
+
+
+function updateAudioProgress() {
+
+  const audio =
+    elements.storyAudio;
+
+
+  if (
+    !audio.duration
+  ) {
+
+    return;
+
+  }
+
+
+  elements.audioProgress.value =
+    (
+      audio.currentTime /
+      audio.duration
+    ) *
+    100;
+
+
+  elements.audioCurrentTime.textContent =
+    formatTime(
+      audio.currentTime
+    );
+
+
+  highlightAudioParagraph();
+
+}
+
+
+function updateAudioDuration() {
+
+  elements.audioDuration.textContent =
+    formatTime(
+      elements.storyAudio.duration
+    );
+
+}
+
+
+function highlightAudioParagraph() {
+
   const source =
-    getAudioSource(story);
+    state.audio.sources[
+      state.audio.currentIndex
+    ];
 
-  if (!source) {
 
-    player.classList.remove(
+  if (
+    !source ||
+    source.paragraph === null ||
+    source.paragraph === undefined
+  ) {
+
+    return;
+
+  }
+
+
+  const paragraphs =
+    $$("#storyReadingArea .story-paragraph");
+
+
+  paragraphs.forEach(
+    paragraph =>
+      paragraph.classList.remove(
+        "audio-active"
+      )
+  );
+
+
+  const index =
+    Number(
+      source.paragraph
+    );
+
+
+  if (
+    paragraphs[index]
+  ) {
+
+    paragraphs[index]
+      .classList.add(
+        "audio-active"
+      );
+
+    paragraphs[index]
+      .scrollIntoView(
+        {
+          behavior: "smooth",
+          block: "center"
+        }
+      );
+
+  }
+
+}
+
+
+function stopAudio() {
+
+  if (
+    !elements.storyAudio
+  ) {
+
+    return;
+
+  }
+
+
+  elements.storyAudio.pause();
+
+  elements.storyAudio.removeAttribute(
+    "src"
+  );
+
+  elements.storyAudio.load();
+
+}
+
+
+function showAudioPlayer() {
+
+  elements.audioPlayer
+    .classList.add(
       "visible"
     );
 
-    return;
-
-  }
-
-  state.audio.enabled =
-    true;
-
-  state.audio.currentUrl =
-    source;
-
-  state.audio.currentTitle =
-    story.title;
-
-  audio.src =
-    source;
-
-  $("#audioTitle").textContent =
-    story.title;
-
-  $("#audioStatus").textContent =
-    "Narration available";
-
-  player.classList.add(
-    "visible"
-  );
-
-}
-
-
-/* ============================================================
-   AUDIO SOURCE
-============================================================ */
-
-function getAudioSource(
-  story
-) {
-
-  if (
-    Array.isArray(story.audio) &&
-    story.audio.length
-  ) {
-
-    const first =
-      story.audio[0];
-
-    if (
-      typeof first === "string"
-    ) {
-
-      return first;
-
-    }
-
-    return (
-      first.url ||
-      first.audio_url ||
-      first.src ||
-      ""
-    );
-
-  }
-
-  return "";
-
-}
-
-
-/* ============================================================
-   AUDIO EVENTS
-============================================================ */
-
-function setupAudioEvents() {
-
-  const audio =
-    $("#audioElement");
-
-  const play =
-    $("#audioPlay");
-
-  const progress =
-    $("#audioProgress");
-
-  const speed =
-    $("#audioSpeed");
-
-  const close =
-    $("#audioClose");
-
-  if (!audio) {
-    return;
-  }
-
-  play.addEventListener(
-    "click",
-    async () => {
-
-      if (
-        audio.paused
-      ) {
-
-        try {
-
-          await audio.play();
-
-        } catch (error) {
-
-          toast(
-            "Audio playback could not start."
-          );
-
-        }
-
-      } else {
-
-        audio.pause();
-
-      }
-
-    }
-  );
-
-
-  audio.addEventListener(
-    "play",
-    () => {
-
-      play.textContent =
-        "Ⅱ";
-
-      $("#audioStatus").textContent =
-        "Playing";
-
-    }
-  );
-
-
-  audio.addEventListener(
-    "pause",
-    () => {
-
-      play.textContent =
-        "▶";
-
-      $("#audioStatus").textContent =
-        "Paused";
-
-    }
-  );
-
-
-  audio.addEventListener(
-    "timeupdate",
-    () => {
-
-      if (
-        !audio.duration
-      ) {
-        return;
-      }
-
-      progress.style.width =
-        `${
-          (
-            audio.currentTime /
-            audio.duration
-          ) * 100
-        }%`;
-
-    }
-  );
-
-
-  speed.addEventListener(
-    "change",
-    () => {
-
-      audio.playbackRate =
-        Number(
-          speed.value
-        );
-
-      localStorage.setItem(
-        "storynest_audio_speed",
-        speed.value
-      );
-
-    }
-  );
-
-
-  close.addEventListener(
-    "click",
-    () => {
-
-      audio.pause();
-
-      audio.removeAttribute(
-        "src"
-      );
-
-      audio.load();
-
-      $("#audioPlayer")
-        .classList
-        .remove("visible");
-
-    }
-  );
-
-}
-
-
-/* ============================================================
-   STORY BUTTONS
-============================================================ */
-
-function bindStoryButtons() {
-
-  $$("[data-story]").forEach(
-    button => {
-
-      button.addEventListener(
-        "click",
-        () => {
-
-          const identifier =
-            button.dataset.story;
-
-          loadStory(
-            identifier
-          );
-
-        }
-      );
-
-    }
-  );
-
-}
-
-
-/* ============================================================
-   VIEW MANAGEMENT
-============================================================ */
-
-function showView(
-  view
-) {
-
-  state.currentView =
-    view;
-
-  $$(".view").forEach(
-    element => {
-
-      element.classList.remove(
-        "active-view"
-      );
-
-    }
-  );
-
-  const target =
-    $(`#${view}View`);
-
-  if (target) {
-
-    target.classList.add(
-      "active-view"
-    );
-
-  }
-
-  $$(".nav-link").forEach(
-    button => {
-
-      button.classList.toggle(
-        "active",
-        button.dataset.view ===
-          view
-      );
-
-    }
-  );
-
-  window.scrollTo({
-    top: 0,
-    behavior: "smooth"
-  });
-
-}
-
-
-/* ============================================================
-   ERROR / EMPTY
-============================================================ */
-
-function emptyState(
-  message
-) {
-
-  return `
-
-    <div class="empty-state">
-      ${escapeHTML(message)}
-    </div>
-
-  `;
-
-}
-
-
-function renderError(
-  elementId,
-  message
-) {
-
-  const element =
-    document.getElementById(
-      elementId
-    );
-
-  if (!element) {
-    return;
-  }
-
-  element.innerHTML = `
-
-    <div class="error-state">
-
-      <strong>
-        Something went quiet.
-      </strong>
-
-      <p>
-        ${escapeHTML(message)}
-      </p>
-
-      <button
-        class="secondary-button"
-        onclick="loadStories()"
-      >
-        Try again
-      </button>
-
-    </div>
-
-  `;
-
-}
-
-
-/* ============================================================
-   LOADING
-============================================================ */
-
-function showLoading() {
-
-  $("#loadingScreen")
-    ?.classList
-    .remove("hidden");
-
-}
-
-
-function hideLoading() {
-
-  $("#loadingScreen")
-    ?.classList
-    .add("hidden");
-
-}
-
-
-/* ============================================================
-   THEME
-============================================================ */
-
-function setupTheme() {
-
-  const saved =
-    localStorage.getItem(
-      "storynest_theme"
-    );
-
-  if (
-    saved === "dark"
-  ) {
-
-    document.documentElement
-      .classList
-      .add("dark");
-
-    $("#themeIcon").textContent =
-      "☼";
-
-  }
-
-  $("#themeButton")
-    .addEventListener(
-      "click",
-      () => {
-
-        const dark =
-          document.documentElement
-            .classList
-            .toggle("dark");
-
-        localStorage.setItem(
-          "storynest_theme",
-          dark
-            ? "dark"
-            : "light"
-        );
-
-        $("#themeIcon").textContent =
-          dark
-            ? "☼"
-            : "◐";
-
-      }
+  elements.audioPlayer
+    .setAttribute(
+      "aria-hidden",
+      "false"
     );
 
 }
 
 
-/* ============================================================
-   SEARCH
-============================================================ */
+function hideAudioPlayer() {
 
-function setupSearch() {
-
-  const search =
-    $("#storySearch");
-
-  search.addEventListener(
-    "input",
-    event => {
-
-      state.searchQuery =
-        event.target.value;
-
-      state.currentPage =
-        1;
-
-      renderLibrary();
-
-    }
-  );
-
-
-  $("#clearSearch")
-    .addEventListener(
-      "click",
-      () => {
-
-        search.value = "";
-
-        state.searchQuery =
-          "";
-
-        state.currentPage =
-          1;
-
-        renderLibrary();
-
-        search.focus();
-
-      }
+  elements.audioPlayer
+    .classList.remove(
+      "visible"
     );
 
-
-  $("#globalSearch")
-    .addEventListener(
-      "input",
-      event => {
-
-        renderGlobalSearch(
-          event.target.value
-        );
-
-      }
-    );
-
-}
-
-
-/* ============================================================
-   GLOBAL SEARCH
-============================================================ */
-
-function renderGlobalSearch(
-  query
-) {
-
-  const container =
-    $("#globalSearchResults");
-
-  const normalized =
-    query
-      .trim()
-      .toLowerCase();
-
-  if (!normalized) {
-
-    container.innerHTML = "";
-
-    return;
-
-  }
-
-  const results =
-    state.stories
-      .filter(
-        story =>
-          [
-            story.title,
-            story.subtitle,
-            story.description,
-            story.genre,
-            story.category
-          ]
-            .join(" ")
-            .toLowerCase()
-            .includes(normalized)
-      )
-      .slice(0, 8);
-
-  if (!results.length) {
-
-    container.innerHTML =
-      emptyState(
-        "No stories found."
-      );
-
-    return;
-
-  }
-
-  container.innerHTML =
-    results
-      .map(
-        story => `
-
-          <div class="global-result">
-
-            <button
-              data-story="${escapeHTML(
-                story.slug ||
-                story.story_id
-              )}"
-            >
-
-              <strong>
-                ${escapeHTML(
-                  story.title
-                )}
-              </strong>
-
-              <p>
-                ${escapeHTML(
-                  story.description
-                )}
-              </p>
-
-            </button>
-
-          </div>
-
-        `
-      )
-      .join("");
-
-  bindStoryButtons();
-
-}
-
-
-/* ============================================================
-   SEARCH OVERLAY
-============================================================ */
-
-function setupSearchOverlay() {
-
-  const overlay =
-    $("#searchOverlay");
-
-  $("#searchButton")
-    .addEventListener(
-      "click",
-      () => {
-
-        overlay.classList.add(
-          "open"
-        );
-
-        overlay.setAttribute(
-          "aria-hidden",
-          "false"
-        );
-
-        setTimeout(
-          () =>
-            $("#globalSearch")
-              .focus(),
-          50
-        );
-
-      }
-    );
-
-
-  $("#searchClose")
-    .addEventListener(
-      "click",
-      closeSearch
-    );
-
-
-  overlay.addEventListener(
-    "click",
-    event => {
-
-      if (
-        event.target === overlay
-      ) {
-
-        closeSearch();
-
-      }
-
-    }
-  );
-
-
-  document.addEventListener(
-    "keydown",
-    event => {
-
-      if (
-        event.key === "Escape"
-      ) {
-
-        closeSearch();
-
-      }
-
-    }
-  );
-
-}
-
-
-function closeSearch() {
-
-  const overlay =
-    $("#searchOverlay");
-
-  overlay.classList.remove(
-    "open"
-  );
-
-  overlay.setAttribute(
-    "aria-hidden",
-    "true"
-  );
-
-}
-
-
-/* ============================================================
-   FILTER EVENTS
-============================================================ */
-
-function setupFilters() {
-
-  $("#ageFilter")
-    .addEventListener(
-      "change",
-      event => {
-
-        state.ageFilter =
-          event.target.value;
-
-        state.currentPage =
-          1;
-
-        renderLibrary();
-
-      }
-    );
-
-
-  $("#readingFilter")
-    .addEventListener(
-      "change",
-      event => {
-
-        state.readingFilter =
-          event.target.value;
-
-        state.currentPage =
-          1;
-
-        renderLibrary();
-
-      }
-    );
-
-
-  $("#resetFilters")
-    .addEventListener(
-      "click",
-      () => {
-
-        state.searchQuery =
-          "";
-
-        state.ageFilter =
-          "";
-
-        state.readingFilter =
-          "";
-
-        state.categoryFilter =
-          "";
-
-        $("#storySearch").value =
-          "";
-
-        $("#ageFilter").value =
-          "";
-
-        $("#readingFilter").value =
-          "";
-
-        renderLibrary();
-
-      }
-    );
-
-
-  $("#loadMoreButton")
-    .addEventListener(
-      "click",
-      () => {
-
-        state.currentPage++;
-
-        renderLibrary();
-
-      }
-    );
-
-}
-
-
-/* ============================================================
-   AGE BUTTONS
-============================================================ */
-
-function setupAgeButtons() {
-
-  $$("[data-age]").forEach(
-    button => {
-
-      button.addEventListener(
-        "click",
-        () => {
-
-          state.ageFilter =
-            button.dataset.age;
-
-          $("#ageFilter").value =
-            state.ageFilter;
-
-          showView(
-            "stories"
-          );
-
-          renderLibrary();
-
-        }
-      );
-
-    }
-  );
-
-}
-
-
-/* ============================================================
-   CATEGORY BUTTONS
-============================================================ */
-
-function setupCategoryButtons() {
-
-  $$(".category-grid button")
-    .forEach(
-      button => {
-
-        button.addEventListener(
-          "click",
-          () => {
-
-            state.categoryFilter =
-              button.dataset.category;
-
-            state.currentPage =
-              1;
-
-            showView(
-              "stories"
-            );
-
-            renderLibrary();
-
-          }
-        );
-
-      }
+  elements.audioPlayer
+    .setAttribute(
+      "aria-hidden",
+      "true"
     );
 
 }
@@ -2344,15 +2176,1495 @@ function setupCategoryButtons() {
 
 function setupNavigation() {
 
-  $$("[data-view]").forEach(
+  $$(
+    "[data-nav]"
+  ).forEach(
     button => {
 
       button.addEventListener(
         "click",
         () => {
 
-          showView(
-            button.dataset.view
+          const page =
+            button.dataset.nav;
+
+          showPage(
+            page
+          );
+
+          closeMobileMenu();
+
+        }
+      );
+
+    }
+  );
+
+
+  document
+    .querySelector(
+      "[data-action='home']"
+    )
+    ?.addEventListener(
+      "click",
+      () =>
+        showPage(
+          "discover"
+        )
+    );
+
+
+  elements.statusRefresh
+    ?.addEventListener(
+      "click",
+      loadHomeData
+    );
+
+
+  elements.backToStories =
+    $("#backToStories");
+
+
+  elements.backToStories
+    ?.addEventListener(
+      "click",
+      () =>
+        showPage(
+          "stories"
+        )
+    );
+
+}
+
+
+function showPage(
+  page
+) {
+
+  state.currentPage =
+    page;
+
+
+  $$(".page-section")
+    .forEach(
+      section =>
+        section.classList.remove(
+          "active"
+        )
+    );
+
+
+  const pageElement =
+    $(
+      page === "discover"
+        ? "#discoverPage"
+        : page === "stories"
+        ? "#storiesPage"
+        : page === "explore"
+        ? "#explorePage"
+        : "#storyPage"
+    );
+
+
+  pageElement
+    ?.classList.add(
+      "active"
+    );
+
+
+  $$(".nav-link")
+    .forEach(
+      link =>
+        link.classList.toggle(
+          "active",
+          link.dataset.nav ===
+            page
+        )
+    );
+
+
+  window.scrollTo(
+    {
+      top: 0,
+      behavior: "smooth"
+    }
+  );
+
+
+  if (
+    page === "stories"
+  ) {
+
+    renderLibrary();
+
+  }
+
+
+  if (
+    page === "discover"
+  ) {
+
+    renderContinueReading();
+
+  }
+
+}
+
+
+/* ============================================================
+   SEARCH
+============================================================ */
+
+function setupSearch() {
+
+  const input =
+    $("#storySearch");
+
+  const clear =
+    $("#clearSearch");
+
+
+  input?.addEventListener(
+    "input",
+    debounce(
+      () => {
+
+        state.search =
+          input.value.trim();
+
+        clear.hidden =
+          !state.search;
+
+        renderLibrary();
+
+      },
+      250
+    )
+  );
+
+
+  clear?.addEventListener(
+    "click",
+    () => {
+
+      input.value =
+        "";
+
+      state.search =
+        "";
+
+      clear.hidden =
+        true;
+
+      renderLibrary();
+
+    }
+  );
+
+
+  elements.globalSearch
+    ?.addEventListener(
+      "input",
+      debounce(
+        performGlobalSearch,
+        250
+      )
+    );
+
+
+  $("#headerSearchButton")
+    ?.addEventListener(
+      "click",
+      openSearchOverlay
+    );
+
+
+  $("#closeSearch")
+    ?.addEventListener(
+      "click",
+      closeSearchOverlay
+    );
+
+}
+
+
+function performGlobalSearch() {
+
+  const query =
+    elements.globalSearch
+      ?.value
+      ?.trim()
+      ?.toLowerCase();
+
+
+  if (!query) {
+
+    elements.globalSearchResults.innerHTML =
+      "";
+
+    return;
+
+  }
+
+
+  const matches =
+    state.allStories
+      .filter(
+        story => {
+
+          const text =
+            [
+              story.title,
+              story.subtitle,
+              story.description,
+              story.genre,
+              story.category
+            ]
+              .join(" ")
+              .toLowerCase();
+
+          return text.includes(
+            query
+          );
+
+        }
+      )
+      .slice(0, 8);
+
+
+  if (!matches.length) {
+
+    elements.globalSearchResults.innerHTML = `
+      <div class="empty-card">
+        No stories found for
+        <strong>
+          ${escapeHTML(query)}
+        </strong>.
+      </div>
+    `;
+
+    return;
+
+  }
+
+
+  elements.globalSearchResults.innerHTML =
+    matches
+      .map(
+        story => `
+
+          <div
+            class="search-result"
+            data-search-slug="${escapeAttribute(
+              story.slug
+            )}"
+          >
+
+            <strong>
+              ${escapeHTML(
+                story.title
+              )}
+            </strong>
+
+            <div class="story-meta">
+
+              <span>
+                ${escapeHTML(
+                  story.genre ||
+                  "Story"
+                )}
+              </span>
+
+              <span>
+                Ages ${formatAgeRange(
+                  story.age_min,
+                  story.age_max
+                )}
+              </span>
+
+            </div>
+
+          </div>
+
+        `
+      )
+      .join("");
+
+
+  $$(
+    "[data-search-slug]"
+  ).forEach(
+    result => {
+
+      result.addEventListener(
+        "click",
+        () => {
+
+          closeSearchOverlay();
+
+          openStory(
+            result.dataset.searchSlug
+          );
+
+        }
+      );
+
+    }
+  );
+
+}
+
+
+function openSearchOverlay() {
+
+  elements.searchOverlay
+    .classList.add(
+      "visible"
+    );
+
+  elements.searchOverlay
+    .setAttribute(
+      "aria-hidden",
+      "false"
+    );
+
+
+  setTimeout(
+    () =>
+      elements.globalSearch
+        ?.focus(),
+    100
+  );
+
+}
+
+
+function closeSearchOverlay() {
+
+  elements.searchOverlay
+    .classList.remove(
+      "visible"
+    );
+
+  elements.searchOverlay
+    .setAttribute(
+      "aria-hidden",
+      "true"
+    );
+
+}
+
+
+/* ============================================================
+   FILTERS
+============================================================ */
+
+function setupFilters() {
+
+  $("#ageFilter")
+    ?.addEventListener(
+      "change",
+      event => {
+
+        state.age =
+          event.target.value;
+
+        state.page =
+          1;
+
+        renderLibrary();
+
+      }
+    );
+
+
+  $("#genreFilter")
+    ?.addEventListener(
+      "change",
+      event => {
+
+        state.genre =
+          event.target.value;
+
+        state.page =
+          1;
+
+        renderLibrary();
+
+      }
+    );
+
+
+  $("#resetFilters")
+    ?.addEventListener(
+      "click",
+      () => {
+
+        state.search =
+          "";
+
+        state.age =
+          "";
+
+        state.genre =
+          "";
+
+
+        $("#storySearch").value =
+          "";
+
+        $("#ageFilter").value =
+          "";
+
+        $("#genreFilter").value =
+          "";
+
+
+        $("#clearSearch").hidden =
+          true;
+
+
+        renderLibrary();
+
+      }
+    );
+
+
+  $$(
+    "[data-age]"
+  ).forEach(
+    button => {
+
+      button.addEventListener(
+        "click",
+        () => {
+
+          state.age =
+            button.dataset.age;
+
+          $("#ageFilter").value =
+            state.age;
+
+          showPage(
+            "stories"
+          );
+
+          renderLibrary();
+
+        }
+      );
+
+    }
+  );
+
+
+  $$(
+    "[data-genre]"
+  ).forEach(
+    button => {
+
+      button.addEventListener(
+        "click",
+        () => {
+
+          state.genre =
+            button.dataset.genre;
+
+          $("#genreFilter").value =
+            findGenreValue(
+              state.genre
+            );
+
+          showPage(
+            "stories"
+          );
+
+          renderLibrary();
+
+        }
+      );
+
+    }
+  );
+
+
+  elements.loadMoreButton
+    ?.addEventListener(
+      "click",
+      () => {
+
+        state.page++;
+
+        renderLibrary();
+
+      }
+    );
+
+}
+
+
+function populateGenreFilter() {
+
+  const select =
+    $("#genreFilter");
+
+
+  if (!select) return;
+
+
+  const current =
+    state.genre;
+
+
+  const genres =
+    Array.from(
+      state.genres
+    )
+      .filter(Boolean)
+      .sort(
+        localeCompareSafe
+      );
+
+
+  select.innerHTML =
+    `<option value="">
+      All genres
+    </option>`;
+
+
+  genres.forEach(
+    genre => {
+
+      const option =
+        document.createElement(
+          "option"
+        );
+
+      option.value =
+        genre;
+
+      option.textContent =
+        genre;
+
+      select.appendChild(
+        option
+      );
+
+    }
+  );
+
+
+  select.value =
+    current;
+
+}
+
+
+function findGenreValue(
+  value
+) {
+
+  const match =
+    Array.from(
+      state.genres
+    )
+      .find(
+        genre =>
+          genre.toLowerCase() ===
+          value.toLowerCase()
+      );
+
+
+  return match ||
+    value;
+
+}
+
+
+/* ============================================================
+   LIBRARY RENDERING
+============================================================ */
+
+function renderLibrary() {
+
+  let stories =
+    [...state.allStories];
+
+
+  if (state.search) {
+
+    const query =
+      state.search.toLowerCase();
+
+
+    stories =
+      stories.filter(
+        story => {
+
+          const text =
+            [
+              story.title,
+              story.subtitle,
+              story.description,
+              story.genre,
+              story.category,
+              story.author_name
+            ]
+              .join(" ")
+              .toLowerCase();
+
+          return text.includes(
+            query
+          );
+
+        }
+      );
+
+  }
+
+
+  if (state.age) {
+
+    stories =
+      stories.filter(
+        story =>
+          ageMatches(
+            story,
+            state.age
+          )
+      );
+
+  }
+
+
+  if (state.genre) {
+
+    stories =
+      stories.filter(
+        story =>
+          String(
+            story.genre
+          ).toLowerCase() ===
+          state.genre.toLowerCase()
+      );
+
+  }
+
+
+  state.stories =
+    stories;
+
+
+  const visible =
+    stories.slice(
+      0,
+      state.page *
+        CONFIG.pageSize
+    );
+
+
+  elements.libraryCount.textContent =
+    `${stories.length} ${
+      stories.length === 1
+        ? "story"
+        : "stories"
+    } found`;
+
+
+  if (!visible.length) {
+
+    elements.storyLibrary.innerHTML = `
+      <div class="empty-card">
+        No stories match your search.
+        <br><br>
+        Try another title, genre or age group.
+      </div>
+    `;
+
+    elements.loadMoreButton
+      .classList.add(
+        "hidden"
+      );
+
+    return;
+
+  }
+
+
+  elements.storyLibrary.innerHTML =
+    visible
+      .map(
+        story =>
+          storyCardMarkup(
+            story
+          )
+      )
+      .join("");
+
+
+  bindStoryCards();
+
+
+  const hasMore =
+    visible.length <
+    stories.length;
+
+
+  elements.loadMoreButton
+    .classList.toggle(
+      "hidden",
+      !hasMore
+    );
+
+}
+
+
+function renderFeatured() {
+
+  const stories =
+    state.featuredStories.length
+      ? state.featuredStories
+      : state.allStories.slice(
+          0,
+          3
+        );
+
+
+  if (!stories.length) {
+
+    elements.featuredStories.innerHTML =
+      emptyMarkup(
+        "No featured stories yet."
+      );
+
+    return;
+
+  }
+
+
+  elements.featuredStories.innerHTML =
+    stories
+      .slice(0, 3)
+      .map(
+        story =>
+          storyCardMarkup(
+            story
+          )
+      )
+      .join("");
+
+
+  bindStoryCards(
+    elements.featuredStories
+  );
+
+}
+
+
+function renderLatest() {
+
+  if (
+    !state.latestStories.length
+  ) {
+
+    elements.latestStories.innerHTML =
+      emptyMarkup(
+        "No stories available yet."
+      );
+
+    return;
+
+  }
+
+
+  elements.latestStories.innerHTML =
+    state.latestStories
+      .map(
+        story =>
+          compactStoryMarkup(
+            story
+          )
+      )
+      .join("");
+
+
+  bindStoryCards(
+    elements.latestStories
+  );
+
+}
+
+
+function storyCardMarkup(
+  story
+) {
+
+  const audio =
+    story.audio_available
+      ? "♪ Audio"
+      : "";
+
+
+  return `
+
+    <article
+      class="story-card"
+      data-story-slug="${escapeAttribute(
+        story.slug
+      )}"
+    >
+
+      <div class="story-card-visual">
+
+        <span class="story-number">
+          ${escapeHTML(
+            getStoryNumber(
+              story
+            )
+          )}
+        </span>
+
+      </div>
+
+
+      <div class="story-card-body">
+
+        <h3>
+          ${escapeHTML(
+            story.title
+          )}
+        </h3>
+
+        ${
+          story.description
+            ? `
+              <p>
+                ${escapeHTML(
+                  truncate(
+                    story.description,
+                    120
+                  )
+                )}
+              </p>
+            `
+            : ""
+        }
+
+
+        <div class="story-meta">
+
+          ${
+            story.genre
+              ? `
+                <span>
+                  ${escapeHTML(
+                    story.genre
+                  )}
+                </span>
+              `
+              : ""
+          }
+
+          <span>
+            Ages ${formatAgeRange(
+              story.age_min,
+              story.age_max
+            )}
+          </span>
+
+          ${
+            story.reading_time
+              ? `
+                <span>
+                  ${story.reading_time} min
+                </span>
+              `
+              : ""
+          }
+
+          ${
+            audio
+              ? `
+                <span>
+                  ${audio}
+                </span>
+              `
+              : ""
+          }
+
+        </div>
+
+      </div>
+
+      <button
+        class="story-card-button"
+        type="button"
+        aria-label="Read ${escapeAttribute(
+          story.title
+        )}"
+      ></button>
+
+    </article>
+
+  `;
+
+}
+
+
+function compactStoryMarkup(
+  story
+) {
+
+  return `
+
+    <article
+      class="story-card"
+      data-story-slug="${escapeAttribute(
+        story.slug
+      )}"
+    >
+
+      <div class="story-card-body">
+
+        <span class="eyebrow">
+          ${escapeHTML(
+            story.genre ||
+            "StoryNest Original"
+          )}
+        </span>
+
+        <h3>
+          ${escapeHTML(
+            story.title
+          )}
+        </h3>
+
+        <p>
+          ${escapeHTML(
+            truncate(
+              story.description,
+              150
+            )
+          )}
+        </p>
+
+        <div class="story-meta">
+
+          <span>
+            Ages ${formatAgeRange(
+              story.age_min,
+              story.age_max
+            )}
+          </span>
+
+          ${
+            story.reading_time
+              ? `
+                <span>
+                  ${story.reading_time} min read
+                </span>
+              `
+              : ""
+          }
+
+        </div>
+
+      </div>
+
+      <button
+        class="story-card-button"
+        type="button"
+        aria-label="Read ${escapeAttribute(
+          story.title
+        )}"
+      ></button>
+
+    </article>
+
+  `;
+
+}
+
+
+function bindStoryCards(
+  container =
+    document
+) {
+
+  container
+    .querySelectorAll(
+      "[data-story-slug]"
+    )
+    .forEach(
+      card => {
+
+        card.addEventListener(
+          "click",
+          event => {
+
+            if (
+              event.target.closest(
+                "button"
+              )
+            ) {
+
+              openStory(
+                card.dataset.storySlug
+              );
+
+              return;
+
+            }
+
+
+            openStory(
+              card.dataset.storySlug
+            );
+
+          }
+        );
+
+      }
+    );
+
+}
+
+
+/* ============================================================
+   CONTINUE READING
+============================================================ */
+
+function saveLastStory(
+  story
+) {
+
+  localStorage.setItem(
+    CONFIG.storagePrefix +
+      "last_story",
+    JSON.stringify(
+      {
+        story_id:
+          story.story_id,
+
+        slug:
+          story.slug,
+
+        title:
+          story.title,
+
+        subtitle:
+          story.subtitle
+      }
+    )
+  );
+
+}
+
+
+function renderContinueReading() {
+
+  const saved =
+    getLastStory();
+
+
+  if (!saved) {
+
+    elements.continueSection
+      .classList.add(
+        "hidden"
+      );
+
+    return;
+
+  }
+
+
+  const progress =
+    getStoryProgress(
+      saved.story_id
+    );
+
+
+  elements.continueSection
+    .classList.remove(
+      "hidden"
+    );
+
+
+  elements.continueCard.innerHTML = `
+
+    <div class="continue-card">
+
+      <div>
+
+        <span class="eyebrow">
+          Continue reading
+        </span>
+
+        <h3>
+          ${escapeHTML(
+            saved.title
+          )}
+        </h3>
+
+        ${
+          saved.subtitle
+            ? `
+              <p>
+                ${escapeHTML(
+                  saved.subtitle
+                )}
+              </p>
+            `
+            : ""
+        }
+
+        <div class="progress-bar">
+
+          <div
+            class="progress-fill"
+            style="width:${progress}%"
+          ></div>
+
+        </div>
+
+        <p style="margin-top:8px">
+          ${progress}% complete
+        </p>
+
+      </div>
+
+
+      <button
+        type="button"
+        class="primary-button"
+        id="continueReadingButton"
+      >
+        Continue →
+      </button>
+
+    </div>
+
+  `;
+
+
+  $("#continueReadingButton")
+    ?.addEventListener(
+      "click",
+      () =>
+        openStory(
+          saved.slug
+        )
+    );
+
+}
+
+
+/* ============================================================
+   READING PROGRESS
+============================================================ */
+
+function observeReadingProgress() {
+
+  const area =
+    $("#storyReadingArea");
+
+
+  if (!area) return;
+
+
+  window.removeEventListener(
+    "scroll",
+    window.storyNestProgressHandler
+  );
+
+
+  window.storyNestProgressHandler =
+    debounce(
+      () => {
+
+        if (
+          !state.currentStory
+        ) {
+
+          return;
+
+        }
+
+
+        const rect =
+          area.getBoundingClientRect();
+
+
+        const total =
+          area.scrollHeight;
+
+
+        const viewport =
+          window.innerHeight;
+
+
+        const current =
+          Math.max(
+            0,
+            Math.min(
+              total - viewport,
+              -rect.top
+            )
+          );
+
+
+        const progress =
+          total <= viewport
+            ? 100
+            : Math.round(
+                (
+                  current /
+                  (
+                    total -
+                    viewport
+                  )
+                ) *
+                100
+              );
+
+
+        saveStoryProgress(
+          state.currentStory.story_id,
+          progress
+        );
+
+      },
+      200
+    );
+
+
+  window.addEventListener(
+    "scroll",
+    window.storyNestProgressHandler,
+    {
+      passive: true
+    }
+  );
+
+}
+
+
+function updateReadingProgress(
+  story
+) {
+
+  const progress =
+    getStoryProgress(
+      story.story_id
+    );
+
+
+  if (
+    progress >= 95
+  ) {
+
+    saveStoryProgress(
+      story.story_id,
+      100
+    );
+
+  }
+
+}
+
+
+function saveStoryProgress(
+  id,
+  progress
+) {
+
+  if (!id) return;
+
+
+  localStorage.setItem(
+    CONFIG.storagePrefix +
+      "progress_" +
+      id,
+    String(
+      Math.max(
+        0,
+        Math.min(
+          100,
+          progress
+        )
+      )
+    )
+  );
+
+}
+
+
+function getStoryProgress(
+  id
+) {
+
+  if (!id) {
+    return 0;
+  }
+
+
+  return Number(
+    localStorage.getItem(
+      CONFIG.storagePrefix +
+        "progress_" +
+        id
+    )
+  ) || 0;
+
+}
+
+
+/* ============================================================
+   BOOKMARKS
+============================================================ */
+
+function toggleBookmark(
+  story
+) {
+
+  if (!story?.story_id) {
+    return;
+  }
+
+
+  const key =
+    CONFIG.storagePrefix +
+    "bookmarks";
+
+
+  const bookmarks =
+    JSON.parse(
+      localStorage.getItem(
+        key
+      ) ||
+      "[]"
+    );
+
+
+  const index =
+    bookmarks.indexOf(
+      story.story_id
+    );
+
+
+  if (
+    index >= 0
+  ) {
+
+    bookmarks.splice(
+      index,
+      1
+    );
+
+    showToast(
+      "Removed from saved stories."
+    );
+
+  } else {
+
+    bookmarks.push(
+      story.story_id
+    );
+
+    showToast(
+      "Story saved."
+    );
+
+  }
+
+
+  localStorage.setItem(
+    key,
+    JSON.stringify(
+      bookmarks
+    )
+  );
+
+}
+
+
+function isBookmarked(
+  id
+) {
+
+  if (!id) return false;
+
+
+  const bookmarks =
+    JSON.parse(
+      localStorage.getItem(
+        CONFIG.storagePrefix +
+          "bookmarks"
+      ) ||
+      "[]"
+    );
+
+
+  return bookmarks.includes(
+    id
+  );
+
+}
+
+
+function refreshStoryActionButtons() {
+
+  const story =
+    state.currentStory;
+
+
+  if (!story) return;
+
+
+  $$(
+    "[data-story-action='bookmark']"
+  ).forEach(
+    button => {
+
+      button.textContent =
+        isBookmarked(
+          story.story_id
+        )
+          ? "★ Saved"
+          : "☆ Save";
+
+    }
+  );
+
+}
+
+
+/* ============================================================
+   READING SETTINGS
+============================================================ */
+
+function setupReadingControls() {
+
+  $("#closeReadingPanel")
+    ?.addEventListener(
+      "click",
+      closeReadingPanel
+    );
+
+
+  $$(
+    "[data-font-size]"
+  ).forEach(
+    button => {
+
+      button.addEventListener(
+        "click",
+        () => {
+
+          setReadingClass(
+            "font",
+            button.dataset.fontSize
           );
 
         }
@@ -2362,90 +3674,324 @@ function setupNavigation() {
   );
 
 
-  $("#brandHome")
-    .addEventListener(
-      "click",
-      event => {
+  $$(
+    "[data-reading-width]"
+  ).forEach(
+    button => {
 
-        event.preventDefault();
+      button.addEventListener(
+        "click",
+        () => {
 
-        showView(
-          "home"
-        );
-
-      }
-    );
-
-
-  $("#exploreStoriesButton")
-    .addEventListener(
-      "click",
-      () => {
-
-        showView(
-          "stories"
-        );
-
-      }
-    );
-
-
-  $("#readerBack")
-    .addEventListener(
-      "click",
-      () => {
-
-        showView(
-          "stories"
-        );
-
-      }
-    );
-
-
-  $("#randomStoryButton")
-    .addEventListener(
-      "click",
-      () => {
-
-        if (!state.stories.length) {
-          return;
-        }
-
-        const index =
-          Math.floor(
-            Math.random() *
-            state.stories.length
+          setReadingClass(
+            "width",
+            button.dataset.readingWidth
           );
 
-        const story =
-          state.stories[index];
+        }
+      );
 
-        loadStory(
-          story.slug ||
-          story.story_id
-        );
+    }
+  );
 
-      }
+
+  $$(
+    "[data-reading-theme]"
+  ).forEach(
+    button => {
+
+      button.addEventListener(
+        "click",
+        () => {
+
+          setReadingTheme(
+            button.dataset.readingTheme
+          );
+
+        }
+      );
+
+    }
+  );
+
+}
+
+
+function openReadingPanel() {
+
+  elements.readingPanel
+    .classList.add(
+      "visible"
+    );
+
+  elements.readingPanel
+    .setAttribute(
+      "aria-hidden",
+      "false"
     );
 
 }
 
 
+function closeReadingPanel() {
+
+  elements.readingPanel
+    .classList.remove(
+      "visible"
+    );
+
+  elements.readingPanel
+    .setAttribute(
+      "aria-hidden",
+      "true"
+    );
+
+}
+
+
+function setReadingClass(
+  type,
+  value
+) {
+
+  if (
+    type ===
+    "font"
+  ) {
+
+    document.body.classList.remove(
+      "reading-small",
+      "reading-medium",
+      "reading-large"
+    );
+
+
+    document.body.classList.add(
+      `reading-${value}`
+    );
+
+
+    localStorage.setItem(
+      CONFIG.storagePrefix +
+        "font_size",
+      value
+    );
+
+  }
+
+
+  if (
+    type ===
+    "width"
+  ) {
+
+    document.body.classList.remove(
+      "reading-narrow",
+      "reading-comfortable",
+      "reading-wide"
+    );
+
+
+    document.body.classList.add(
+      `reading-${value}`
+    );
+
+
+    localStorage.setItem(
+      CONFIG.storagePrefix +
+        "reading_width",
+      value
+    );
+
+  }
+
+}
+
+
+function setReadingTheme(
+  theme
+) {
+
+  document.body.classList.remove(
+    "reading-warm",
+    "reading-dark"
+  );
+
+
+  if (
+    theme ===
+    "warm"
+  ) {
+
+    document.body.classList.add(
+      "reading-warm"
+    );
+
+  }
+
+
+  if (
+    theme ===
+    "dark"
+  ) {
+
+    document.body.classList.add(
+      "reading-dark"
+    );
+
+  }
+
+
+  localStorage.setItem(
+    CONFIG.storagePrefix +
+      "reading_theme",
+    theme
+  );
+
+
+  updateThemeIcon();
+
+}
+
+
 /* ============================================================
-   MOBILE MENU
+   PREFERENCES
 ============================================================ */
 
-function setupMobileMenu() {
+function loadPreferences() {
 
-  $("#mobileMenuButton")
-    .addEventListener(
+  const fontSize =
+    localStorage.getItem(
+      CONFIG.storagePrefix +
+        "font_size"
+    ) ||
+    "medium";
+
+
+  const width =
+    localStorage.getItem(
+      CONFIG.storagePrefix +
+        "reading_width"
+    ) ||
+    "comfortable";
+
+
+  const theme =
+    localStorage.getItem(
+      CONFIG.storagePrefix +
+        "reading_theme"
+    ) ||
+    "light";
+
+
+  setReadingClass(
+    "font",
+    fontSize
+  );
+
+  setReadingClass(
+    "width",
+    width
+  );
+
+  setReadingTheme(
+    theme
+  );
+
+}
+
+
+/* ============================================================
+   THEME BUTTON
+============================================================ */
+
+function setupThemeButton() {
+
+  $("#themeButton")
+    ?.addEventListener(
       "click",
       () => {
 
-        $("#mobileNav")
-          .classList
-          .toggle("open");
+        const current =
+          localStorage.getItem(
+            CONFIG.storagePrefix +
+              "reading_theme"
+          ) ||
+          "light";
+
+
+        const next =
+          current === "light"
+            ? "warm"
+            : current === "warm"
+            ? "dark"
+            : "light";
+
+
+        setReadingTheme(
+          next
+        );
+
+      }
+    );
+
+
+  updateThemeIcon();
+
+}
+
+
+function updateThemeIcon() {
+
+  const theme =
+    localStorage.getItem(
+      CONFIG.storagePrefix +
+        "reading_theme"
+    ) ||
+    "light";
+
+
+  const icon =
+    theme === "dark"
+      ? "●"
+      : theme === "warm"
+      ? "◒"
+      : "◐";
+
+
+  $("#themeIcon").textContent =
+    icon;
+
+}
+
+
+/* ============================================================
+   MENU
+============================================================ */
+
+function setupMenu() {
+
+  $("#menuButton")
+    ?.addEventListener(
+      "click",
+      () => {
+
+        const nav =
+          $("#mobileNav");
+
+        const visible =
+          nav.classList.toggle(
+            "visible"
+          );
+
+
+        $("#menuButton")
+          .setAttribute(
+            "aria-expanded",
+            String(
+              visible
+            )
+          );
 
       }
     );
@@ -2453,25 +3999,75 @@ function setupMobileMenu() {
 }
 
 
+function closeMobileMenu() {
+
+  $("#mobileNav")
+    ?.classList.remove(
+      "visible"
+    );
+
+  $("#menuButton")
+    ?.setAttribute(
+      "aria-expanded",
+      "false"
+    );
+
+}
+
+
 /* ============================================================
-   REFRESH
+   GLOBAL ACTIONS
 ============================================================ */
 
-function setupRefresh() {
+function setupGlobalActions() {
 
-  $("#refreshButton")
-    .addEventListener(
+  $("#surpriseButton")
+    ?.addEventListener(
       "click",
-      async () => {
-
-        await loadStories();
-
-        toast(
-          "StoryNest refreshed."
-        );
-
-      }
+      surpriseMe
     );
+
+}
+
+
+function surpriseMe() {
+
+  if (
+    !state.allStories.length
+  ) {
+
+    showToast(
+      "Stories are still loading."
+    );
+
+    return;
+
+  }
+
+
+  const candidates =
+    state.allStories.filter(
+      story =>
+        story.story_id
+    );
+
+
+  const random =
+    candidates[
+      Math.floor(
+        Math.random() *
+        candidates.length
+      )
+    ];
+
+
+  if (random) {
+
+    openStory(
+      random.slug
+    );
+
+  }
 
 }
 
@@ -2480,87 +4076,870 @@ function setupRefresh() {
    AUTOMATIC REFRESH
 ============================================================ */
 
-function setupAutoRefresh() {
-
-  const interval =
-    STORYNEST_CONFIG
-      .AUTO_REFRESH_MINUTES *
-    60 *
-    1000;
+function startAutomaticRefresh() {
 
   setInterval(
-    () => {
+    async () => {
 
-      loadStories();
+      if (
+        state.currentPage ===
+        "story"
+      ) {
+
+        return;
+
+      }
+
+
+      try {
+
+        const response =
+          await apiRequest(
+            "stories",
+            {
+              page: 1,
+              pageSize: 50
+            }
+          );
+
+
+        const stories =
+          normalizeStories(
+            response?.data
+          );
+
+
+        state.allStories =
+          stories;
+
+
+        state.stories =
+          stories;
+
+
+        collectGenres(
+          stories
+        );
+
+
+        state.featuredStories =
+          stories.filter(
+            story =>
+              story.featured
+          );
+
+
+        state.latestStories =
+          [...stories]
+            .sort(
+              (a, b) =>
+                dateValue(
+                  b.published_at
+                ) -
+                dateValue(
+                  a.published_at
+                )
+            )
+            .slice(0, 6);
+
+
+        renderFeatured();
+
+        renderLatest();
+
+        populateGenreFilter();
+
+        renderLibrary();
+
+
+        setStatus(
+          "online",
+          "StoryNest updated"
+        );
+
+      } catch {
+
+        // Keep existing content
+        // if automatic refresh fails.
+
+      }
 
     },
-    interval
+    CONFIG.refreshInterval
   );
 
 }
 
 
 /* ============================================================
-   AUDIO PREFERENCE
+   STATUS
 ============================================================ */
 
-function loadAudioPreference() {
+function setStatus(
+  type,
+  message
+) {
 
-  const saved =
-    localStorage.getItem(
-      "storynest_audio_speed"
+  elements.statusDot
+    .classList.remove(
+      "online",
+      "error"
     );
 
-  if (saved) {
 
-    $("#audioSpeed").value =
-      saved;
+  if (
+    type ===
+    "online"
+  ) {
+
+    elements.statusDot
+      .classList.add(
+        "online"
+      );
+
+  }
+
+
+  if (
+    type ===
+    "error"
+  ) {
+
+    elements.statusDot
+      .classList.add(
+        "error"
+      );
+
+  }
+
+
+  elements.statusText.textContent =
+    message;
+
+}
+
+
+/* ============================================================
+   KEYBOARD
+============================================================ */
+
+function setupKeyboardControls() {
+
+  document.addEventListener(
+    "keydown",
+    event => {
+
+      const tag =
+        document.activeElement
+          ?.tagName;
+
+
+      if (
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        tag === "SELECT"
+      ) {
+
+        return;
+
+      }
+
+
+      if (
+        event.code ===
+        "Space" &&
+        state.audio.story
+      ) {
+
+        event.preventDefault();
+
+
+        if (
+          elements.storyAudio.paused
+        ) {
+
+          startStoryAudio();
+
+        } else {
+
+          elements.storyAudio.pause();
+
+        }
+
+      }
+
+
+      if (
+        event.key ===
+        "Escape"
+      ) {
+
+        closeSearchOverlay();
+
+        closeReadingPanel();
+
+      }
+
+    }
+  );
+
+}
+
+
+/* ============================================================
+   ERROR / LOADING
+============================================================ */
+
+function loadingStoryMarkup() {
+
+  return `
+
+    <div class="loading-card">
+      Loading story...
+    </div>
+
+  `;
+
+}
+
+
+function errorStoryMarkup(
+  error
+) {
+
+  return `
+
+    <div class="error-card">
+
+      <strong>
+        We couldn't load this story.
+      </strong>
+
+      <p>
+        ${
+          escapeHTML(
+            error?.message ||
+            "Please try again."
+          )
+        }
+      </p>
+
+      <button
+        type="button"
+        class="secondary-button"
+        onclick="location.reload()"
+      >
+        Retry
+      </button>
+
+    </div>
+
+  `;
+
+}
+
+
+function renderError(
+  container,
+  error
+) {
+
+  if (!container) return;
+
+
+  container.innerHTML = `
+
+    <div class="error-card">
+
+      <strong>
+        StoryNest couldn't load the content.
+      </strong>
+
+      <p>
+        ${escapeHTML(
+          error?.message ||
+          "Please try again."
+        )}
+      </p>
+
+      <button
+        type="button"
+        class="secondary-button"
+        onclick="location.reload()"
+      >
+        Retry
+      </button>
+
+    </div>
+
+  `;
+
+}
+
+
+function emptyMarkup(
+  message
+) {
+
+  return `
+
+    <div class="empty-card">
+      ${escapeHTML(
+        message
+      )}
+    </div>
+
+  `;
+
+}
+
+
+/* ============================================================
+   HELPERS
+============================================================ */
+
+function escapeHTML(
+  value
+) {
+
+  return String(
+    value ??
+    ""
+  )
+    .replace(
+      /&/g,
+      "&amp;"
+    )
+    .replace(
+      /</g,
+      "&lt;"
+    )
+    .replace(
+      />/g,
+      "&gt;"
+    )
+    .replace(
+      /"/g,
+      "&quot;"
+    )
+    .replace(
+      /'/g,
+      "&#039;"
+    );
+
+}
+
+
+function escapeAttribute(
+  value
+) {
+
+  return escapeHTML(
+    value
+  );
+
+}
+
+
+function slugify(
+  value
+) {
+
+  return String(
+    value ||
+    ""
+  )
+    .toLowerCase()
+    .trim()
+    .replace(
+      /[^a-z0-9]+/g,
+      "-"
+    )
+    .replace(
+      /^-+|-+$/g,
+      ""
+    );
+
+}
+
+
+function toNumber(
+  value,
+  fallback = 0
+) {
+
+  const number =
+    Number(
+      value
+    );
+
+
+  return Number.isFinite(
+    number
+  )
+    ? number
+    : fallback;
+
+}
+
+
+function toBoolean(
+  value
+) {
+
+  if (
+    typeof value ===
+    "boolean"
+  ) {
+
+    return value;
+
+  }
+
+
+  return [
+    "true",
+    "1",
+    "yes",
+    "y"
+  ].includes(
+    String(
+      value
+    )
+      .trim()
+      .toLowerCase()
+  );
+
+}
+
+
+function dateValue(
+  value
+) {
+
+  const time =
+    Date.parse(
+      value ||
+      ""
+    );
+
+
+  return Number.isNaN(
+    time
+  )
+    ? 0
+    : time;
+
+}
+
+
+function formatAgeRange(
+  min,
+  max
+) {
+
+  const minimum =
+    toNumber(
+      min,
+      0
+    );
+
+
+  const maximum =
+    toNumber(
+      max,
+      0
+    );
+
+
+  if (
+    maximum === 0
+  ) {
+
+    return `${minimum}+`;
+
+  }
+
+
+  return `${minimum}–${maximum}`;
+
+}
+
+
+function formatGenre(
+  genre
+) {
+
+  if (!genre) {
+    return "Original story";
+  }
+
+
+  return escapeHTML(
+    String(
+      genre
+    )
+      .replace(
+        /^GEN\d+$/i,
+        "Story"
+      )
+  );
+
+}
+
+
+function formatTime(
+  seconds
+) {
+
+  if (
+    !Number.isFinite(
+      seconds
+    )
+  ) {
+
+    return "0:00";
+
+  }
+
+
+  const total =
+    Math.max(
+      0,
+      Math.floor(
+        seconds
+      )
+    );
+
+
+  const minutes =
+    Math.floor(
+      total / 60
+    );
+
+
+  const secs =
+    total % 60;
+
+
+  return `${minutes}:${String(
+    secs
+  ).padStart(
+    2,
+    "0"
+  )}`;
+
+}
+
+
+function truncate(
+  value,
+  length
+) {
+
+  const text =
+    String(
+      value ||
+      ""
+    );
+
+
+  if (
+    text.length <=
+    length
+  ) {
+
+    return text;
+
+  }
+
+
+  return (
+    text.slice(
+      0,
+      length
+    ).trim() +
+    "..."
+  );
+
+}
+
+
+function ageMatches(
+  story,
+  selectedAge
+) {
+
+  const match =
+    String(
+      selectedAge
+    ).match(
+      /(\d+)\s*-\s*(\d+)|(\d+)\+/
+    );
+
+
+  if (!match) {
+    return true;
+  }
+
+
+  let targetMin;
+  let targetMax;
+
+
+  if (
+    match[3]
+  ) {
+
+    targetMin =
+      Number(
+        match[3]
+      );
+
+    targetMax =
+      Infinity;
+
+  } else {
+
+    targetMin =
+      Number(
+        match[1]
+      );
+
+    targetMax =
+      Number(
+        match[2]
+      );
+
+  }
+
+
+  const storyMin =
+    toNumber(
+      story.age_min,
+      0
+    );
+
+
+  const storyMax =
+    toNumber(
+      story.age_max,
+      Infinity
+    );
+
+
+  return (
+    storyMin <=
+      targetMax &&
+    storyMax >=
+      targetMin
+  );
+
+}
+
+
+function getStoryNumber(
+  story
+) {
+
+  const id =
+    String(
+      story.story_id ||
+      ""
+    );
+
+
+  const number =
+    id.match(
+      /(\d+)$/
+    );
+
+
+  if (number) {
+
+    return number[1]
+      .padStart(
+        2,
+        "0"
+      );
+
+  }
+
+
+  return "01";
+
+}
+
+
+function collectGenres(
+  stories
+) {
+
+  state.genres =
+    new Set();
+
+
+  stories.forEach(
+    story => {
+
+      if (
+        story.genre
+      ) {
+
+        state.genres.add(
+          String(
+            story.genre
+          )
+            .trim()
+        );
+
+      }
+
+    }
+  );
+
+}
+
+
+function localeCompareSafe(
+  a,
+  b
+) {
+
+  return String(a)
+    .localeCompare(
+      String(b)
+    );
+
+}
+
+
+function getLastStory() {
+
+  try {
+
+    return JSON.parse(
+      localStorage.getItem(
+        CONFIG.storagePrefix +
+          "last_story"
+      ) ||
+      "null"
+    );
+
+  } catch {
+
+    return null;
 
   }
 
 }
 
 
-/* ============================================================
-   INITIALIZATION
-============================================================ */
+function addParagraphClasses(
+  html
+) {
 
-async function init() {
+  let index =
+    0;
 
-  setupTheme();
 
-  setupNavigation();
+  return html.replace(
+    /<p(\s[^>]*)?>/gi,
+    match => {
 
-  setupMobileMenu();
+      const result =
+        `<p class="story-paragraph" data-paragraph-index="${index}">`;
 
-  setupSearch();
+      index++;
 
-  setupSearchOverlay();
+      return result;
 
-  setupFilters();
+    }
+  );
 
-  setupAgeButtons();
+}
 
-  setupCategoryButtons();
 
-  setupRefresh();
+function debounce(
+  fn,
+  delay
+) {
 
-  setupAudioEvents();
+  let timer;
 
-  loadAudioPreference();
 
-  setupAutoRefresh();
+  return function(
+    ...args
+  ) {
 
-  await loadStories();
+    clearTimeout(
+      timer
+    );
+
+
+    timer =
+      setTimeout(
+        () =>
+          fn.apply(
+            this,
+            args
+          ),
+        delay
+      );
+
+  };
+
+}
+
+
+function showToast(
+  message
+) {
+
+  elements.toast.textContent =
+    message;
+
+
+  elements.toast
+    .classList.add(
+      "visible"
+    );
+
+
+  clearTimeout(
+    window.storyNestToastTimer
+  );
+
+
+  window.storyNestToastTimer =
+    setTimeout(
+      () =>
+        elements.toast
+          .classList.remove(
+            "visible"
+          ),
+      2500
+    );
 
 }
 
 
 /* ============================================================
-   START
+   EXPORT FOR DEBUGGING
 ============================================================ */
 
-document.addEventListener(
-  "DOMContentLoaded",
-  init
-);
+window.StoryNest = {
+
+  state,
+
+  apiRequest,
+
+  openStory,
+
+  showPage,
+
+  loadHomeData,
+
+  surpriseMe
+
+};
