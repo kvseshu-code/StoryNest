@@ -28,7 +28,6 @@
 
 const API_BASE =
   "https://script.google.com/macros/s/AKfycbz4IKVE7jINJwwlT_9V4fZph9jbzlFiUbEOMBFIzics5nlVtDaf9l2kridmaodDkGj9/exec"
-  );
 
 
 const CONFIG = {
