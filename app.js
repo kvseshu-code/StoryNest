@@ -9,9 +9,18 @@
         ↓
    Google Sheets
 
-   IMPORTANT:
-   This version preserves the existing StoryNest features
-   while making API/story loading more tolerant.
+   Compatible with the current StoryNest Code.gs API.
+
+   IMPORTANT FIXES:
+   - Health check no longer blocks story loading
+   - Multiple API response formats supported
+   - renderAll() added
+   - Stories load independently from optional endpoints
+   - Featured/categories/genres cannot break the main library
+   - More tolerant single-story response handling
+   - Better API error reporting
+   - Preserves search, filters, favorites, audio,
+     reading progress, preferences and story rendering
 ========================================================= */
 
 (() => {
@@ -34,6 +43,11 @@
 
   const PROGRESS_KEY =
     "storynest_progress_v2";
+
+
+  /* =======================================================
+     2. APPLICATION STATE
+  ======================================================= */
 
   const state = {
     stories: [],
@@ -67,14 +81,21 @@
 
 
   /* =======================================================
-     2. DOM HELPERS
+     3. DOM HELPERS
   ======================================================= */
 
-  const $ = (selector, root = document) =>
-    root.querySelector(selector);
+  const $ = (
+    selector,
+    root = document
+  ) => root.querySelector(selector);
 
-  const $$ = (selector, root = document) =>
-    Array.from(root.querySelectorAll(selector));
+
+  const $$ = (
+    selector,
+    root = document
+  ) => Array.from(
+    root.querySelectorAll(selector)
+  );
 
 
   function firstExisting(...selectors) {
@@ -94,7 +115,9 @@
     if (!element) return;
 
     element.textContent =
-      value == null ? "" : String(value);
+      value == null
+        ? ""
+        : String(value);
   }
 
 
@@ -102,16 +125,20 @@
     if (!element) return;
 
     element.innerHTML =
-      value == null ? "" : String(value);
+      value == null
+        ? ""
+        : String(value);
   }
 
 
   /* =======================================================
-     3. SAFE HTML / URL
+     4. SAFE HTML / URL
   ======================================================= */
 
   function escapeHTML(value) {
-    return String(value == null ? "" : value)
+    return String(
+      value == null ? "" : value
+    )
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
@@ -143,6 +170,7 @@
       }
 
       return "";
+
     } catch {
       return "";
     }
@@ -150,7 +178,7 @@
 
 
   /* =======================================================
-     4. STORAGE
+     5. STORAGE
   ======================================================= */
 
   function loadStorage() {
@@ -162,12 +190,14 @@
           ) || "{}"
         );
 
+
       const favorites =
         JSON.parse(
           localStorage.getItem(
             FAVORITES_KEY
           ) || "[]"
         );
+
 
       const progress =
         JSON.parse(
@@ -204,10 +234,11 @@
 
     } catch (error) {
       console.warn(
-        "[StoryNest] Storage could not be loaded.",
+        "StoryNest storage could not be loaded.",
         error
       );
     }
+
 
     applyPreferences();
   }
@@ -222,10 +253,7 @@
         )
       );
     } catch (error) {
-      console.warn(
-        "[StoryNest] Could not save preferences.",
-        error
-      );
+      console.warn(error);
     }
   }
 
@@ -239,10 +267,7 @@
         )
       );
     } catch (error) {
-      console.warn(
-        "[StoryNest] Could not save favorites.",
-        error
-      );
+      console.warn(error);
     }
   }
 
@@ -256,16 +281,13 @@
         )
       );
     } catch (error) {
-      console.warn(
-        "[StoryNest] Could not save progress.",
-        error
-      );
+      console.warn(error);
     }
   }
 
 
   /* =======================================================
-     5. PREFERENCES
+     6. PREFERENCES
   ======================================================= */
 
   function applyPreferences() {
@@ -279,8 +301,10 @@
       state.preferences.theme ||
       "light";
 
+
     root.dataset.theme =
       theme;
+
 
     if (body) {
       body.dataset.theme =
@@ -328,43 +352,39 @@
 
 
   function updatePreferenceControls() {
-
-    $$("[data-theme]").forEach(
-      (button) => {
+    $$("[data-theme]")
+      .forEach((button) => {
         button.classList.toggle(
           "active",
           button.dataset.theme ===
             state.preferences.theme
         );
-      }
-    );
+      });
 
 
-    $$("[data-text-size]").forEach(
-      (button) => {
+    $$("[data-text-size]")
+      .forEach((button) => {
         button.classList.toggle(
           "active",
           button.dataset.textSize ===
             state.preferences.textSize
         );
-      }
-    );
+      });
 
 
-    $$("[data-reading-width]").forEach(
-      (button) => {
+    $$("[data-reading-width]")
+      .forEach((button) => {
         button.classList.toggle(
           "active",
           button.dataset.readingWidth ===
             state.preferences.readingWidth
         );
-      }
-    );
+      });
   }
 
 
   /* =======================================================
-     6. API
+     7. API
   ======================================================= */
 
   async function api(
@@ -374,14 +394,15 @@
     const query =
       new URLSearchParams();
 
+
     query.set(
       "action",
       action
     );
 
 
-    Object.keys(params).forEach(
-      (key) => {
+    Object.keys(params)
+      .forEach((key) => {
         const value =
           params[key];
 
@@ -395,8 +416,7 @@
             value
           );
         }
-      }
-    );
+      });
 
 
     const url =
@@ -405,12 +425,12 @@
 
     console.debug(
       "[StoryNest API]",
-      action,
-      params
+      url
     );
 
 
     let response;
+
 
     try {
       response =
@@ -425,7 +445,8 @@
     } catch (error) {
       throw new Error(
         `Unable to reach StoryNest API: ${
-          error.message
+          error?.message ||
+          "Network error"
         }`
       );
     }
@@ -454,8 +475,15 @@
         "application/json"
       )
     ) {
-      data =
-        await response.json();
+      try {
+        data =
+          await response.json();
+      } catch {
+        throw new Error(
+          "StoryNest API returned invalid JSON."
+        );
+      }
+
     } else {
       const raw =
         await response.text();
@@ -463,12 +491,8 @@
       try {
         data =
           JSON.parse(raw);
-      } catch {
-        console.error(
-          "[StoryNest API] Invalid response:",
-          raw
-        );
 
+      } catch {
         throw new Error(
           "StoryNest API returned an invalid response."
         );
@@ -477,8 +501,7 @@
 
 
     console.debug(
-      "[StoryNest API RESPONSE]",
-      action,
+      `[StoryNest API:${action}]`,
       data
     );
 
@@ -508,59 +531,72 @@
 
 
   /* =======================================================
-     7. RESPONSE HELPERS
+     8. RESPONSE HELPERS
   ======================================================= */
 
-  function unwrapData(response) {
-    if (!response) {
-      return null;
+  function extractArray(
+    response,
+    keys = []
+  ) {
+    if (Array.isArray(response)) {
+      return response;
     }
 
 
     if (
-      response.data !== undefined
+      response &&
+      Array.isArray(response.data)
     ) {
       return response.data;
     }
 
 
-    if (
-      response.result !== undefined
-    ) {
-      return response.result;
+    for (const key of keys) {
+      if (
+        response &&
+        Array.isArray(
+          response[key]
+        )
+      ) {
+        return response[key];
+      }
     }
 
 
-    return response;
+    if (
+      response &&
+      response.data &&
+      typeof response.data ===
+        "object"
+    ) {
+      for (const key of keys) {
+        if (
+          Array.isArray(
+            response.data[key]
+          )
+        ) {
+          return response.data[key];
+        }
+      }
+    }
+
+
+    return [];
   }
 
 
-  function findStoryObject(response) {
+  function extractStory(
+    response
+  ) {
     if (!response) {
       return null;
     }
 
 
-    /*
-     * Possible structures supported:
-     *
-     * response.story
-     *
-     * response.data
-     *
-     * response.data.story
-     *
-     * response.result.story
-     *
-     * response.story.story
-     *
-     */
-
-
     if (
       response.story &&
-      typeof response.story === "object" &&
-      !Array.isArray(response.story)
+      typeof response.story ===
+        "object"
     ) {
       return response.story;
     }
@@ -568,12 +604,14 @@
 
     if (
       response.data &&
-      typeof response.data === "object" &&
+      typeof response.data ===
+        "object" &&
       !Array.isArray(response.data)
     ) {
       if (
         response.data.story &&
-        typeof response.data.story === "object"
+        typeof response.data.story ===
+          "object"
       ) {
         return response.data.story;
       }
@@ -584,16 +622,9 @@
 
     if (
       response.result &&
-      typeof response.result === "object" &&
-      !Array.isArray(response.result)
+      typeof response.result ===
+        "object"
     ) {
-      if (
-        response.result.story &&
-        typeof response.result.story === "object"
-      ) {
-        return response.result.story;
-      }
-
       return response.result;
     }
 
@@ -602,676 +633,311 @@
   }
 
 
-  function findStoryRecords(response) {
-    if (!response) {
-      return [];
-    }
-
-
-    if (
-      Array.isArray(response.data)
-    ) {
-      return response.data;
-    }
-
-
-    if (
-      Array.isArray(response.stories)
-    ) {
-      return response.stories;
-    }
-
-
-    if (
-      response.data &&
-      Array.isArray(
-        response.data.stories
-      )
-    ) {
-      return response.data.stories;
-    }
-
-
-    if (
-      response.result &&
-      Array.isArray(
-        response.result
-      )
-    ) {
-      return response.result;
-    }
-
-
-    if (
-      response.result &&
-      Array.isArray(
-        response.result.stories
-      )
-    ) {
-      return response.result.stories;
-    }
-
-
-    return [];
-  }
-
-
   /* =======================================================
-     8. API NORMALIZATION
+     9. API NORMALIZATION
   ======================================================= */
 
   function normalizeStory(raw) {
-
     if (!raw) {
       return null;
     }
 
 
     /*
-     * Some backend responses can contain:
-     *
-     * {
-     *   story: {
-     *     story: {...},
-     *     content: {...}
-     *   }
-     *
-     * }
-     *
-     * or:
-     *
-     * {
-     *   story_id,
-     *   title,
-     *   story
-     * }
-     */
-
-
-    let source =
-      raw;
-
-
-    /*
-     * First unwrap common wrappers.
+     * Handle nested data wrappers.
      */
 
     if (
-      source.data &&
-      typeof source.data === "object" &&
-      !Array.isArray(source.data)
+      raw.data &&
+      typeof raw.data ===
+        "object" &&
+      !Array.isArray(raw.data)
     ) {
-      source =
-        source.data;
+      raw =
+        raw.data;
     }
 
 
-    if (
-      source.story &&
-      typeof source.story === "object" &&
-      !Array.isArray(source.story)
-    ) {
+    let meta = raw;
 
-      /*
-       * Detailed response:
-       *
-       * source.story.story
-       * source.story.content
-       * source.story.characters
-       */
+    let content = {};
 
-      if (
-        source.story.story &&
-        typeof source.story.story === "object"
-      ) {
-        source =
-          source.story;
-      }
+    let characters = [];
 
-      /*
-       * Simple response:
-       *
-       * source.story = actual story object
-       */
-      else if (
-        source.story.title ||
-        source.story.story_id ||
-        source.story.slug
-      ) {
-        source =
-          source.story;
-      }
-    }
+    let audio = {};
 
+    let media = {};
 
-    let meta =
-      source;
-
-
-    let content =
-      {};
-
-
-    let characters =
-      [];
-
-
-    let audio =
-      {};
-
-
-    let media =
-      {};
-
-
-    let rights =
-      {};
+    let rights = {};
 
 
     /*
-     * Detailed API structure.
+     * Handle:
+     *
+     * {
+     *   story: {...}
+     * }
      */
 
     if (
-      source.story &&
-      typeof source.story === "object" &&
-      !Array.isArray(source.story)
+      raw.story &&
+      typeof raw.story ===
+        "object" &&
+      !Array.isArray(raw.story)
     ) {
+      const wrapper =
+        raw;
+
+
+      /*
+       * Handle:
+       *
+       * {
+       *   story: {
+       *     story: {...},
+       *     content: {...},
+       *     characters: [...]
+       *   }
+       * }
+       */
 
       if (
-        source.story.title ||
-        source.story.story_id ||
-        source.story.slug
+        wrapper.story.story &&
+        typeof wrapper.story.story ===
+          "object"
       ) {
         meta =
-          source.story;
+          wrapper.story.story;
+
+
+        content =
+          wrapper.story.content ||
+          {};
+
+
+        characters =
+          wrapper.story.characters ||
+          [];
+
+
+        audio =
+          wrapper.story.audio ||
+          {};
+
+
+        media =
+          wrapper.story.media ||
+          {};
+
+
+        rights =
+          wrapper.story.rights ||
+          {};
+
+      } else {
+        meta =
+          wrapper.story;
       }
     }
 
 
-    if (
-      source.content &&
-      typeof source.content === "object"
-    ) {
-      content =
-        source.content;
-    }
-
-
-    if (
-      source.characters
-    ) {
-      characters =
-        source.characters;
-    }
-
-
-    if (
-      source.audio &&
-      typeof source.audio === "object"
-    ) {
-      audio =
-        source.audio;
-    }
-
-
-    if (
-      source.media &&
-      typeof source.media === "object"
-    ) {
-      media =
-        source.media;
-    }
-
-
-    if (
-      source.rights &&
-      typeof source.rights === "object"
-    ) {
-      rights =
-        source.rights;
-    }
-
-
     /*
-     * Sometimes content is nested inside
-     * another story object.
-     */
-
-    if (
-      meta.content &&
-      typeof meta.content === "object"
-    ) {
-      content = {
-        ...content,
-        ...meta.content
-      };
-    }
-
-
-    /*
-     * STORY TEXT
-     *
-     * Support all known field names.
+     * CONTENT sheet
      */
 
     const storyText =
-      firstValue(
-        content.story_text,
-        content.story,
-        content.full_story,
-        content.text,
+      content.story_text ||
+      content.story ||
+      meta.story_text ||
+      meta.story ||
+      meta.content ||
+      "";
 
-        meta.story_text,
-        meta.story,
-        meta.full_story,
-        meta.story_content,
-        meta.content_text,
-
-        typeof meta.content === "string"
-          ? meta.content
-          : ""
-      );
-
-
-    /*
-     * DESCRIPTION
-     */
 
     const description =
-      firstValue(
-        content.introduction,
-        content.description,
-
-        meta.description,
-        meta.summary,
-        meta.introduction,
-
-        ""
-      );
+      content.introduction ||
+      content.description ||
+      meta.description ||
+      "";
 
 
-    /*
-     * LESSON
-     */
-
-    const lesson =
-      firstValue(
-        content.lesson,
-        content.moral,
-        content.moral_lesson,
-
-        meta.lesson,
-        meta.moral,
-        ""
-      );
-
-
-    /*
-     * REFLECTION
-     */
-
-    const reflection =
-      firstValue(
-        content.reflection,
-        meta.reflection,
-        ""
-      );
-
-
-    /*
-     * DISCUSSION
-     */
-
-    const discussion =
-      firstValue(
-        content.discussion,
-        meta.discussion,
-        ""
-      );
-
-
-    /*
-     * ACTIVITY
-     */
-
-    const activity =
-      firstValue(
-        content.creative_activity,
-        content.activity,
-
-        meta.activity,
-        meta.creative_activity,
-
-        ""
-      );
-
-
-    /*
-     * AUDIO
-     */
-
-    const audioAvailable =
-      normalizeBoolean(
-        audio.available ??
-        audio.enabled ??
-        meta.audio_available
-      );
-
-
-    const audioURL =
-      safeURL(
-        firstValue(
-          audio.url,
-          audio.audio_url,
-          meta.audio_url,
-          meta.audio,
-          ""
-        )
-      );
-
-
-    /*
-     * COVER
-     */
-
-    const coverImage =
-      safeURL(
-        firstValue(
-          media.cover_image,
-          media.cover,
-          meta.cover_image,
-          meta.cover,
-          meta.image,
-          meta.thumbnail,
-          ""
-        )
-      );
-
-
-    /*
-     * CHARACTERS
-     */
-
-    let normalizedCharacters =
-      characters;
-
-
-    if (
-      !Array.isArray(
-        normalizedCharacters
-      )
-    ) {
-      normalizedCharacters =
-        parseCharacters(
-          firstValue(
-            meta.characters,
-            content.characters,
-            ""
-          )
-        );
-    }
-
-
-    /*
-     * ID
-     */
-
-    const storyId =
-      firstValue(
-        meta.story_id,
-        meta.id,
-        meta.ID,
-        meta.storyId,
-        ""
-      );
-
-
-    /*
-     * SLUG
-     */
-
-    const slug =
-      firstValue(
-        meta.slug,
-        meta.story_slug,
-        meta.storySlug,
-        ""
-      );
-
-
-    /*
-     * CATEGORY
-     */
-
-    const category =
-      firstValue(
-        meta.category,
-        meta.category_name,
-        meta.category_id,
-        ""
-      );
-
-
-    /*
-     * GENRE
-     */
-
-    const genre =
-      firstValue(
-        meta.genre,
-        meta.genre_name,
-        meta.genre_id,
-        ""
-      );
-
-
-    /*
-     * TITLE
-     */
-
-    const title =
-      firstValue(
-        meta.title,
-        meta.name,
-        "Untitled Story"
-      );
-
-
-    const result = {
+    return {
       story_id:
-        String(storyId || ""),
+        meta.story_id ||
+        meta.id ||
+        "",
+
 
       slug:
-        String(slug || ""),
+        meta.slug ||
+        "",
+
 
       title:
-        String(title || ""),
+        meta.title ||
+        "",
+
 
       subtitle:
-        firstValue(
-          meta.subtitle,
-          meta.tagline,
-          ""
-        ),
+        meta.subtitle ||
+        "",
+
 
       description:
         description,
 
+
       category:
-        category,
+        meta.category ||
+        meta.category_id ||
+        "",
+
 
       genre:
-        genre,
+        meta.genre ||
+        meta.genre_id ||
+        "",
+
 
       age_min:
-        firstValue(
-          meta.age_min,
-          meta.min_age,
-          ""
-        ),
+        meta.age_min ??
+        "",
+
 
       age_max:
-        firstValue(
-          meta.age_max,
-          meta.max_age,
-          ""
-        ),
+        meta.age_max ??
+        "",
+
 
       reading_level:
-        firstValue(
-          meta.reading_level,
-          meta.level,
-          ""
-        ),
+        meta.reading_level ||
+        "",
+
 
       reading_time:
-        firstValue(
-          meta.reading_time,
-          meta.read_time,
-          meta.duration,
-          ""
-        ),
+        meta.reading_time ||
+        "",
+
 
       language:
-        firstValue(
-          meta.language,
-          meta.lang,
-          "English"
-        ),
+        meta.language ||
+        "English",
+
 
       author_name:
-        firstValue(
-          meta.author_name,
-          meta.author,
-          "StoryNest Originals"
-        ),
+        meta.author_name ||
+        "StoryNest Originals",
+
 
       story:
-        String(
-          storyText || ""
-        ),
+        storyText,
+
 
       lesson:
-        String(
-          lesson || ""
-        ),
+        content.lesson ||
+        meta.lesson ||
+        "",
+
 
       reflection:
-        String(
-          reflection || ""
-        ),
+        content.reflection ||
+        meta.reflection ||
+        "",
+
 
       discussion:
-        String(
-          discussion || ""
-        ),
+        content.discussion ||
+        meta.discussion ||
+        "",
+
 
       activity:
-        String(
-          activity || ""
-        ),
+        content.creative_activity ||
+        content.activity ||
+        meta.activity ||
+        "",
+
 
       characters:
-        Array.isArray(
-          normalizedCharacters
-        )
-          ? normalizedCharacters
-          : [],
+        Array.isArray(characters)
+          ? characters
+          : parseCharacters(
+              meta.characters
+            ),
+
 
       featured:
         normalizeBoolean(
           meta.featured
         ),
 
+
       status:
         String(
-          meta.status || ""
+          meta.status ||
+          ""
         ).toUpperCase(),
 
+
       audio_available:
-        audioAvailable ||
-        !!audioURL,
+        normalizeBoolean(
+          audio.available ??
+          meta.audio_available
+        ),
+
 
       audio_url:
-        audioURL,
+        safeURL(
+          audio.url ||
+          meta.audio_url ||
+          ""
+        ),
+
 
       cover_image:
-        coverImage,
+        safeURL(
+          media.cover_image ||
+          meta.cover_image ||
+          ""
+        ),
+
 
       tags:
         normalizeTags(
-          firstValue(
-            meta.tags,
-            content.tags,
-            ""
-          )
+          meta.tags
         ),
+
 
       rights_type:
-        firstValue(
-          rights.type,
-          meta.rights_type,
-          ""
-        ),
+        rights.type ||
+        meta.rights_type ||
+        "",
+
 
       rights_status:
-        firstValue(
-          rights.status,
-          meta.rights_status,
-          ""
-        ),
+        rights.status ||
+        meta.rights_status ||
+        "",
+
 
       published_at:
-        firstValue(
-          meta.published_at,
-          meta.published,
-          ""
-        ),
+        meta.published_at ||
+        "",
+
 
       created_at:
-        firstValue(
-          meta.created_at,
-          ""
-        ),
+        meta.created_at ||
+        "",
+
 
       updated_at:
-        firstValue(
-          meta.updated_at,
-          ""
-        )
+        meta.updated_at ||
+        ""
     };
-
-
-    console.debug(
-      "[StoryNest] Normalized story:",
-      result
-    );
-
-
-    return result;
-  }
-
-
-  function firstValue(...values) {
-    for (
-      const value of values
-    ) {
-      if (
-        value !== undefined &&
-        value !== null &&
-        String(value).trim() !== ""
-      ) {
-        return value;
-      }
-    }
-
-    return "";
   }
 
 
   function normalizeBoolean(value) {
-
     if (
       value === true ||
       value === 1
@@ -1289,26 +955,21 @@
     return (
       normalized === "true" ||
       normalized === "yes" ||
-      normalized === "1" ||
-      normalized === "on"
+      normalized === "1"
     );
   }
 
 
   function normalizeTags(value) {
-
     if (!value) {
       return [];
     }
 
 
-    if (
-      Array.isArray(value)
-    ) {
+    if (Array.isArray(value)) {
       return value
-        .map(
-          (item) =>
-            String(item).trim()
+        .map((item) =>
+          String(item).trim()
         )
         .filter(Boolean);
     }
@@ -1316,85 +977,54 @@
 
     return String(value)
       .split(",")
-      .map(
-        (item) =>
-          item.trim()
+      .map((item) =>
+        item.trim()
       )
       .filter(Boolean);
   }
 
 
   function parseCharacters(value) {
-
     if (!value) {
       return [];
     }
 
 
-    if (
-      Array.isArray(value)
-    ) {
+    if (Array.isArray(value)) {
       return value;
     }
 
 
     try {
       const parsed =
-        typeof value === "string"
-          ? JSON.parse(value)
-          : value;
+        JSON.parse(value);
 
 
-      if (
-        Array.isArray(parsed)
-      ) {
-        return parsed;
-      }
-
-
-      if (
-        parsed &&
-        typeof parsed === "object"
-      ) {
-        return Object.keys(parsed)
-          .map(
-            (key) => ({
-              name: key,
-              role:
-                parsed[key]
-            })
-          );
-      }
+      return Array.isArray(parsed)
+        ? parsed
+        : [];
 
     } catch {
-      /* continue */
+      return String(value)
+        .split(",")
+        .map((name) => ({
+          name: name.trim()
+        }))
+        .filter(
+          (item) => item.name
+        );
     }
-
-
-    return String(value)
-      .split(",")
-      .map(
-        (name) => ({
-          name:
-            name.trim()
-        })
-      )
-      .filter(
-        (item) =>
-          item.name
-      );
   }
 
 
   /* =======================================================
-     9. STATUS UI
+     10. STATUS UI
   ======================================================= */
 
   function setConnectionStatus(
     message,
     type = "normal"
   ) {
-
     const elements = [
       firstExisting(
         "#connectionStatus",
@@ -1407,7 +1037,8 @@
         ".status-message",
         "[data-status]"
       )
-    ].filter(Boolean);
+    ]
+      .filter(Boolean);
 
 
     elements.forEach(
@@ -1425,7 +1056,8 @@
 
 
   function showLoading(
-    message = "Loading stories..."
+    message =
+      "Loading stories..."
   ) {
     state.loading = true;
 
@@ -1441,12 +1073,14 @@
   }
 
 
-  function showError(message) {
-
+  function showError(
+    message
+  ) {
     console.error(
       "[StoryNest]",
       message
     );
+
 
     setConnectionStatus(
       message,
@@ -1456,42 +1090,10 @@
 
 
   /* =======================================================
-     10. INITIALIZE
+     11. INITIALIZATION
   ======================================================= */
 
-  let initializationPromise =
-    null;
-
-
   async function initialize() {
-
-    /*
-     * Prevent multiple simultaneous
-     * initialization requests.
-     */
-
-    if (
-      initializationPromise
-    ) {
-      return initializationPromise;
-    }
-
-
-    initializationPromise =
-      initializeInternal();
-
-
-    try {
-      return await initializationPromise;
-    } finally {
-      initializationPromise =
-        null;
-    }
-  }
-
-
-  async function initializeInternal() {
-
     loadStorage();
 
     bindEvents();
@@ -1502,34 +1104,51 @@
 
 
     try {
+      /*
+       * HEALTH IS OPTIONAL.
+       *
+       * A health-check failure must NEVER
+       * prevent stories from loading.
+       */
 
-      const health =
-        await api(
-          "health"
+      try {
+        const health =
+          await api("health");
+
+
+        console.info(
+          "StoryNest backend:",
+          health
         );
 
 
-      console.info(
-        "[StoryNest] Backend:",
-        health
-      );
+        setConnectionStatus(
+          "StoryNest is online",
+          "online"
+        );
 
-
-      setConnectionStatus(
-        "StoryNest is online",
-        "online"
-      );
+      } catch (healthError) {
+        console.warn(
+          "Health check failed. Continuing:",
+          healthError
+        );
+      }
 
 
       /*
-       * Load library data.
-       *
-       * If featured/categories/genres fail,
-       * the main stories should still load.
+       * STORIES ARE THE PRIMARY LOAD.
+       */
+
+      await loadStories();
+
+
+      /*
+       * Optional endpoints.
+       * Their failure cannot break the
+       * main story library.
        */
 
       await Promise.allSettled([
-        loadStories(),
         loadFeatured(),
         loadCategories(),
         loadGenres()
@@ -1543,36 +1162,23 @@
       renderAll();
 
 
-      /*
-       * If stories failed completely,
-       * make the error visible.
-       */
-
-      if (
-        !state.stories.length
-      ) {
-        console.warn(
-          "[StoryNest] No stories were loaded."
-        );
-      }
-
-
     } catch (error) {
-
       console.error(
-        "[StoryNest] Initialization failed:",
+        "StoryNest initialization failed:",
         error
       );
 
 
       showError(
-        "Unable to connect to StoryNest. Please refresh and try again."
+        error?.message ||
+        "Unable to connect to StoryNest."
       );
 
 
       renderEmptyState(
-        "StoryNest is temporarily unavailable.",
-        "Please try again in a moment."
+        "Stories could not be loaded.",
+        error?.message ||
+        "Please refresh and try again."
       );
 
     } finally {
@@ -1582,18 +1188,16 @@
 
 
   /* =======================================================
-     11. LOAD STORIES
+     12. LOAD STORIES
   ======================================================= */
 
   async function loadStories() {
-
     showLoading(
       "Loading stories..."
     );
 
 
     try {
-
       const response =
         await api(
           "stories",
@@ -1616,41 +1220,73 @@
         );
 
 
+      console.debug(
+        "[StoryNest] stories response:",
+        response
+      );
+
+
       const records =
-        findStoryRecords(
-          response
+        extractArray(
+          response,
+          [
+            "stories",
+            "results",
+            "items"
+          ]
         );
 
 
       state.stories =
         records
-          .map(
-            normalizeStory
-          )
+          .map(normalizeStory)
           .filter(Boolean);
 
 
-      console.debug(
-        "[StoryNest] Stories loaded:",
-        state.stories.length,
-        state.stories
+      console.info(
+        `[StoryNest] Loaded ${
+          state.stories.length
+        } stories`
       );
 
 
+      const total =
+        response?.pagination?.total ??
+        response?.total ??
+        state.stories.length;
+
+
       updateStoryCount(
-        response.pagination?.total ??
-        response.total ??
-        state.stories.length
+        total
       );
 
 
       renderStoryLibrary();
 
 
+      if (
+        state.stories.length
+      ) {
+        setConnectionStatus(
+          `${state.stories.length} ${
+            state.stories.length === 1
+              ? "story"
+              : "stories"
+          } available`,
+          "online"
+        );
+
+      } else {
+        setConnectionStatus(
+          "StoryNest connected, but no stories were returned.",
+          "normal"
+        );
+      }
+
+
       return state.stories;
 
     } catch (error) {
-
       console.error(
         "[StoryNest] loadStories failed:",
         error
@@ -1661,12 +1297,16 @@
 
 
       showError(
-        "Stories could not be loaded."
+        `Stories could not be loaded: ${
+          error?.message ||
+          "Unknown API error"
+        }`
       );
 
 
       renderEmptyState(
         "Stories could not be loaded.",
+        error?.message ||
         "Please refresh and try again."
       );
 
@@ -1680,13 +1320,11 @@
 
 
   /* =======================================================
-     12. FEATURED
+     13. LOAD FEATURED
   ======================================================= */
 
   async function loadFeatured() {
-
     try {
-
       const response =
         await api(
           "featured",
@@ -1698,26 +1336,28 @@
 
 
       const records =
-        findStoryRecords(
-          response
+        extractArray(
+          response,
+          [
+            "featured",
+            "stories",
+            "results",
+            "items"
+          ]
         );
 
 
       state.featured =
         records
-          .map(
-            normalizeStory
-          )
+          .map(normalizeStory)
           .filter(Boolean);
 
 
       renderFeatured();
 
-
     } catch (error) {
-
       console.warn(
-        "[StoryNest] Featured stories unavailable:",
+        "Featured stories unavailable:",
         error
       );
 
@@ -1728,42 +1368,33 @@
 
 
   /* =======================================================
-     13. CATEGORIES
+     14. LOAD CATEGORIES
   ======================================================= */
 
   async function loadCategories() {
-
     try {
-
       const response =
         await api(
           "categories"
         );
 
 
-      const data =
-        unwrapData(
-          response
-        );
-
-
       state.categories =
-        Array.isArray(data)
-          ? data
-          : Array.isArray(
-              response.data
-            )
-            ? response.data
-            : [];
+        extractArray(
+          response,
+          [
+            "categories",
+            "results",
+            "items"
+          ]
+        );
 
 
       renderCategories();
 
-
     } catch (error) {
-
       console.warn(
-        "[StoryNest] Categories unavailable:",
+        "Categories unavailable:",
         error
       );
     }
@@ -1771,42 +1402,33 @@
 
 
   /* =======================================================
-     14. GENRES
+     15. LOAD GENRES
   ======================================================= */
 
   async function loadGenres() {
-
     try {
-
       const response =
         await api(
           "genres"
         );
 
 
-      const data =
-        unwrapData(
-          response
-        );
-
-
       state.genres =
-        Array.isArray(data)
-          ? data
-          : Array.isArray(
-              response.data
-            )
-            ? response.data
-            : [];
+        extractArray(
+          response,
+          [
+            "genres",
+            "results",
+            "items"
+          ]
+        );
 
 
       renderGenres();
 
-
     } catch (error) {
-
       console.warn(
-        "[StoryNest] Genres unavailable:",
+        "Genres unavailable:",
         error
       );
     }
@@ -1814,17 +1436,15 @@
 
 
   /* =======================================================
-     15. SEARCH
+     16. SEARCH
   ======================================================= */
 
   async function searchStories(
     query
   ) {
-
     const value =
-      String(
-        query || ""
-      ).trim();
+      String(query || "")
+        .trim();
 
 
     state.searchQuery =
@@ -1843,7 +1463,6 @@
 
 
     try {
-
       const response =
         await api(
           "search",
@@ -1854,22 +1473,25 @@
 
 
       const records =
-        findStoryRecords(
-          response
+        extractArray(
+          response,
+          [
+            "stories",
+            "results",
+            "items"
+          ]
         );
 
 
       state.stories =
         records
-          .map(
-            normalizeStory
-          )
+          .map(normalizeStory)
           .filter(Boolean);
 
 
       updateStoryCount(
-        response.total ??
-        response.pagination?.total ??
+        response?.total ??
+        response?.pagination?.total ??
         state.stories.length
       );
 
@@ -1888,15 +1510,11 @@
 
 
     } catch (error) {
-
-      console.error(
-        "[StoryNest] Search failed:",
-        error
-      );
-
-
       showError(
-        "Search could not be completed."
+        `Search failed: ${
+          error?.message ||
+          "Search could not be completed."
+        }`
       );
 
     } finally {
@@ -1906,27 +1524,13 @@
 
 
   /* =======================================================
-     16. LOAD SINGLE STORY
+     17. OPEN SINGLE STORY
   ======================================================= */
 
   async function openStory(
     identifier
   ) {
-
-    if (
-      !identifier
-    ) {
-      return;
-    }
-
-
-    const id =
-      String(
-        identifier
-      ).trim();
-
-
-    if (!id) {
+    if (!identifier) {
       return;
     }
 
@@ -1936,154 +1540,29 @@
     );
 
 
-    console.info(
-      "[StoryNest] Opening story:",
-      id
-    );
-
-
     try {
-
-      /*
-       * Primary request.
-       */
-
-      let response =
+      const response =
         await api(
           "story",
           {
-            id: id
+            id: identifier
           }
         );
 
 
       console.debug(
-        "[StoryNest] Story API response:",
+        "[StoryNest] Single story response:",
         response
       );
 
 
-      let storyObject =
-        findStoryObject(
+      const rawStory =
+        extractStory(
           response
         );
 
 
-      /*
-       * If the API doesn't return a story
-       * directly, try slug.
-       */
-
-      if (
-        !storyObject
-      ) {
-
-        console.warn(
-          "[StoryNest] Story not found by id. Trying slug..."
-        );
-
-
-        try {
-
-          response =
-            await api(
-              "story",
-              {
-                slug: id
-              }
-            );
-
-
-          storyObject =
-            findStoryObject(
-              response
-            );
-
-        } catch (
-          slugError
-        ) {
-
-          console.warn(
-            "[StoryNest] Slug lookup failed:",
-            slugError
-          );
-        }
-      }
-
-
-      /*
-       * Last fallback:
-       *
-       * Search the already-loaded story list.
-       *
-       * This is important because some Apps Script
-       * deployments may expose the list correctly
-       * but have an inconsistent detail endpoint.
-       */
-
-      if (
-        !storyObject
-      ) {
-
-        const localStory =
-          state.stories.find(
-            (story) =>
-              String(
-                story.story_id
-              ) === id ||
-              String(
-                story.slug
-              ) === id
-          );
-
-
-        if (
-          localStory
-        ) {
-
-          console.warn(
-            "[StoryNest] Using story from loaded library."
-          );
-
-
-          state.currentStory =
-            localStory;
-
-
-          renderStoryPage(
-            localStory
-          );
-
-
-          updateReadingProgress(
-            localStory
-          );
-
-
-          setConnectionStatus(
-            "Story loaded",
-            "online"
-          );
-
-
-          scrollToStory();
-
-
-          return;
-        }
-      }
-
-
-      if (
-        !storyObject
-      ) {
-
-        console.error(
-          "[StoryNest] Could not find story in API response:",
-          response
-        );
-
-
+      if (!rawStory) {
         throw new Error(
           "Story was not returned by the API."
         );
@@ -2092,12 +1571,13 @@
 
       const story =
         normalizeStory(
-          storyObject
+          rawStory
         );
 
 
       if (
-        !story
+        !story ||
+        !story.title
       ) {
         throw new Error(
           "Story data could not be normalized."
@@ -2105,73 +1585,8 @@
       }
 
 
-      /*
-       * If the detailed endpoint returned a
-       * minimal object without content, try to
-       * merge it with the library version.
-       */
-
-      const existing =
-        state.stories.find(
-          (item) =>
-            (
-              story.story_id &&
-              item.story_id ===
-                story.story_id
-            ) ||
-            (
-              story.slug &&
-              item.slug ===
-                story.slug
-            )
-        );
-
-
-      if (
-        existing
-      ) {
-
-        if (
-          !story.story
-        ) {
-          story.story =
-            existing.story;
-        }
-
-
-        if (
-          !story.description
-        ) {
-          story.description =
-            existing.description;
-        }
-
-
-        if (
-          !story.title
-        ) {
-          story.title =
-            existing.title;
-        }
-
-
-        if (
-          !story.cover_image
-        ) {
-          story.cover_image =
-            existing.cover_image;
-        }
-      }
-
-
       state.currentStory =
         story;
-
-
-      console.info(
-        "[StoryNest] Final story:",
-        story
-      );
 
 
       renderStoryPage(
@@ -2194,7 +1609,6 @@
 
 
     } catch (error) {
-
       console.error(
         "[StoryNest] Story loading failed:",
         error
@@ -2202,6 +1616,7 @@
 
 
       showError(
+        error?.message ||
         "Unable to load this story."
       );
 
@@ -2215,13 +1630,40 @@
 
 
   /* =======================================================
-     17. STORY PAGE
+     18. RENDER ALL
+  ======================================================= */
+
+  function renderAll() {
+    renderStoryLibrary();
+
+    renderFeatured();
+
+    renderCategories();
+
+    renderGenres();
+
+    updateStoryCount(
+      state.stories.length
+    );
+
+
+    if (
+      state.currentStory
+    ) {
+      renderStoryPage(
+        state.currentStory
+      );
+    }
+  }
+
+
+  /* =======================================================
+     19. STORY PAGE
   ======================================================= */
 
   function renderStoryPage(
     story
   ) {
-
     const page =
       firstExisting(
         "#storyPage",
@@ -2231,9 +1673,8 @@
 
 
     if (!page) {
-
       console.warn(
-        "[StoryNest] Story page container not found."
+        "Story page container not found."
       );
 
       return;
@@ -2295,43 +1736,27 @@
 
 
     if (metadata) {
-
       html(
         metadata,
-
         [
           story.category,
 
           story.age_min !== "" &&
           story.age_max !== ""
-            ? `Ages ${
-                escapeHTML(
-                  story.age_min
-                )
-              }–${
-                escapeHTML(
-                  story.age_max
-                )
-              }`
+            ? `Ages ${escapeHTML(
+                story.age_min
+              )}–${escapeHTML(
+                story.age_max
+              )}`
             : "",
 
           story.reading_time
-            ? `${
-                escapeHTML(
-                  story.reading_time
-                )
-              } min read`
+            ? `${escapeHTML(
+                story.reading_time
+              )} min read`
             : "",
 
-          story.language,
-
-          story.author_name
-            ? `By ${
-                escapeHTML(
-                  story.author_name
-                )
-              }`
-            : ""
+          story.language
         ]
           .filter(Boolean)
           .map(
@@ -2392,13 +1817,12 @@
 
 
   /* =======================================================
-     18. COVER
+     20. COVER
   ======================================================= */
 
   function renderCover(
     story
   ) {
-
     const image =
       firstExisting(
         "#storyCover",
@@ -2415,7 +1839,6 @@
     if (
       story.cover_image
     ) {
-
       image.src =
         story.cover_image;
 
@@ -2427,13 +1850,11 @@
         false;
 
     } else {
-
       image.removeAttribute(
         "src"
       );
 
-      image.alt =
-        "";
+      image.alt = "";
 
       image.hidden =
         true;
@@ -2442,13 +1863,12 @@
 
 
   /* =======================================================
-     19. STORY CONTENT
+     21. STORY CONTENT
   ======================================================= */
 
   function renderStoryContent(
     story
   ) {
-
     const container =
       firstExisting(
         "#storyContent",
@@ -2460,9 +1880,8 @@
 
 
     if (!container) {
-
       console.warn(
-        "[StoryNest] Story content container not found."
+        "Story content container not found."
       );
 
       return;
@@ -2475,16 +1894,11 @@
       ).trim();
 
 
-    if (
-      !storyText
-    ) {
-
+    if (!storyText) {
       html(
         container,
-
         `
           <div class="story-empty">
-
             <strong>
               This story is being prepared.
             </strong>
@@ -2492,18 +1906,17 @@
             <p>
               The story content has not been published yet.
             </p>
-
           </div>
         `
       );
-
 
       return;
     }
 
 
     /*
-     * Preserve paragraphs.
+     * Preserve paragraphs while escaping
+     * backend HTML.
      */
 
     const paragraphs =
@@ -2520,7 +1933,6 @@
 
     html(
       container,
-
       paragraphs
         .map(
           (paragraph) =>
@@ -2534,13 +1946,12 @@
 
 
   /* =======================================================
-     20. CHARACTERS
+     22. CHARACTERS
   ======================================================= */
 
   function renderCharacters(
     story
   ) {
-
     const container =
       firstExisting(
         "#characters",
@@ -2561,7 +1972,6 @@
       ) ||
       !story.characters.length
     ) {
-
       container.hidden =
         true;
 
@@ -2575,38 +1985,21 @@
 
     html(
       container,
-
       story.characters
         .map(
           (character) => {
-
-            if (
-              typeof character ===
-              "string"
-            ) {
-              character = {
-                name:
-                  character
-              };
-            }
-
-
             const name =
-              character.name ||
-              character.title ||
+              character?.name ||
               "Character";
 
 
             const role =
-              character.role ||
-              character.description ||
+              character?.role ||
               "";
 
 
             return `
-              <article
-                class="character-card"
-              >
+              <article class="character-card">
 
                 <h3>
                   ${escapeHTML(
@@ -2636,14 +2029,13 @@
 
 
   /* =======================================================
-     21. OPTIONAL CONTENT
+     23. OPTIONAL STORY CONTENT
   ======================================================= */
 
   function renderOptionalText(
     selectors,
     value
   ) {
-
     const element =
       firstExisting(
         ...selectors
@@ -2661,10 +2053,7 @@
       ).trim();
 
 
-    if (
-      !textValue
-    ) {
-
+    if (!textValue) {
       element.hidden =
         true;
 
@@ -2676,29 +2065,11 @@
       false;
 
 
-    const paragraphs =
-      textValue
-        .split(
-          /\n\s*\n|\r?\n/
-        )
-        .map(
-          (item) =>
-            item.trim()
-        )
-        .filter(Boolean);
-
-
     html(
       element,
-
-      paragraphs
-        .map(
-          (paragraph) =>
-            `<p>${escapeHTML(
-              paragraph
-            )}</p>`
-        )
-        .join("")
+      `<p>${escapeHTML(
+        textValue
+      )}</p>`
     );
   }
 
@@ -2706,7 +2077,6 @@
   function renderLesson(
     story
   ) {
-
     renderOptionalText(
       [
         "#storyLesson",
@@ -2722,7 +2092,6 @@
   function renderReflection(
     story
   ) {
-
     renderOptionalText(
       [
         "#storyReflection",
@@ -2738,7 +2107,6 @@
   function renderDiscussion(
     story
   ) {
-
     renderOptionalText(
       [
         "#storyDiscussion",
@@ -2754,7 +2122,6 @@
   function renderActivity(
     story
   ) {
-
     renderOptionalText(
       [
         "#storyActivity",
@@ -2768,7 +2135,7 @@
 
 
   /* =======================================================
-     22. AUDIO
+     24. AUDIO
   ======================================================= */
 
   let audioElement =
@@ -2776,10 +2143,7 @@
 
 
   function getAudioElement() {
-
-    if (
-      audioElement
-    ) {
+    if (audioElement) {
       return audioElement;
     }
 
@@ -2819,9 +2183,8 @@
     audioElement.addEventListener(
       "error",
       () => {
-
         console.warn(
-          "[StoryNest] Audio could not be loaded."
+          "Audio could not be loaded."
         );
 
 
@@ -2845,7 +2208,6 @@
   function renderAudio(
     story
   ) {
-
     const player =
       firstExisting(
         "#audioPlayer",
@@ -2855,18 +2217,17 @@
 
 
     const available =
+      story.audio_available &&
       !!story.audio_url;
 
 
     if (player) {
-
       player.hidden =
         !available;
     }
 
 
     if (!available) {
-
       updateAudioButtons(
         false
       );
@@ -2883,7 +2244,6 @@
       audio.src !==
       story.audio_url
     ) {
-
       audio.src =
         story.audio_url;
     }
@@ -2891,8 +2251,8 @@
 
     audio.playbackRate =
       Number(
-        state.preferences.narrationSpeed ||
-        1
+        state.preferences
+          .narrationSpeed || 1
       );
 
 
@@ -2903,16 +2263,15 @@
 
 
   async function toggleAudio() {
-
     const story =
       state.currentStory;
 
 
     if (
       !story ||
+      !story.audio_available ||
       !story.audio_url
     ) {
-
       setConnectionStatus(
         "Narration is not available for this story.",
         "normal"
@@ -2930,18 +2289,15 @@
       audio.src !==
       story.audio_url
     ) {
-
       audio.src =
         story.audio_url;
     }
 
 
     try {
-
       if (
         audio.paused
       ) {
-
         await audio.play();
 
         updateAudioButtons(
@@ -2949,7 +2305,6 @@
         );
 
       } else {
-
         audio.pause();
 
         updateAudioButtons(
@@ -2958,9 +2313,8 @@
       }
 
     } catch (error) {
-
       console.error(
-        "[StoryNest] Audio playback failed:",
+        "Audio playback failed:",
         error
       );
 
@@ -2976,44 +2330,39 @@
   function updateAudioButtons(
     isPlaying
   ) {
-
     $$(
       "[data-audio-toggle], #audioPlay, .audio-play"
-    ).forEach(
-      (button) => {
-
-        button.setAttribute(
-          "aria-label",
-
-          isPlaying
-            ? "Pause narration"
-            : "Play narration"
-        );
-
-
-        const label =
-          button.querySelector(
-            "[data-audio-label]"
-          );
-
-
-        if (label) {
-
-          text(
-            label,
-
+    )
+      .forEach(
+        (button) => {
+          button.setAttribute(
+            "aria-label",
             isPlaying
-              ? "Pause"
-              : "Play"
+              ? "Pause narration"
+              : "Play narration"
           );
+
+
+          const label =
+            button.querySelector(
+              "[data-audio-label]"
+            );
+
+
+          if (label) {
+            text(
+              label,
+              isPlaying
+                ? "Pause"
+                : "Play"
+            );
+          }
         }
-      }
-    );
+      );
   }
 
 
   function updateAudioProgress() {
-
     const audio =
       getAudioElement();
 
@@ -3034,82 +2383,79 @@
 
     $$(
       "[data-audio-progress], #audioProgress"
-    ).forEach(
-      (element) => {
+    )
+      .forEach(
+        (element) => {
+          if (
+            element.tagName ===
+            "INPUT"
+          ) {
+            element.value =
+              percent;
 
-        if (
-          element.tagName ===
-          "INPUT"
-        ) {
-
-          element.value =
-            percent;
-
-        } else {
-
-          element.style.width =
-            `${percent}%`;
+          } else {
+            element.style.width =
+              `${percent}%`;
+          }
         }
-      }
-    );
+      );
 
 
     $$(
       "[data-audio-current], #audioCurrent"
-    ).forEach(
-      (element) => {
-
-        text(
-          element,
-
-          formatTime(
-            audio.currentTime
-          )
-        );
-      }
-    );
+    )
+      .forEach(
+        (element) => {
+          text(
+            element,
+            formatTime(
+              audio.currentTime
+            )
+          );
+        }
+      );
   }
 
 
   function updateAudioDuration() {
-
     const audio =
       getAudioElement();
 
 
     $$(
       "[data-audio-duration], #audioDuration"
-    ).forEach(
-      (element) => {
-
-        text(
-          element,
-
-          formatTime(
-            audio.duration
-          )
-        );
-      }
-    );
+    )
+      .forEach(
+        (element) => {
+          text(
+            element,
+            formatTime(
+              audio.duration
+            )
+          );
+        }
+      );
   }
 
 
   function setAudioSpeed(
     speed
   ) {
-
     const value =
       Number(speed);
 
 
     if (
-      !Number.isFinite(value)
+      !Number.isFinite(
+        value
+      )
     ) {
       return;
     }
 
 
-    state.preferences.narrationSpeed =
+    state.preferences
+      .narrationSpeed =
       value;
 
 
@@ -3128,7 +2474,6 @@
   function seekAudio(
     percent
   ) {
-
     const audio =
       getAudioElement();
 
@@ -3152,9 +2497,10 @@
   function formatTime(
     seconds
   ) {
-
     if (
-      !Number.isFinite(seconds)
+      !Number.isFinite(
+        seconds
+      )
     ) {
       return "0:00";
     }
@@ -3172,35 +2518,29 @@
       );
 
 
-    return `${minutes}:${
-      String(
-        remaining
-      ).padStart(
-        2,
-        "0"
-      )
-    }`;
+    return `${minutes}:${String(
+      remaining
+    ).padStart(2, "0")}`;
   }
 
 
   /* =======================================================
-     23. FAVORITES
+     25. FAVORITES
   ======================================================= */
 
   function isFavorite(
     storyId
   ) {
-
-    return state.favorites.includes(
-      storyId
-    );
+    return state.favorites
+      .includes(
+        storyId
+      );
   }
 
 
   function toggleFavorite(
     storyId
   ) {
-
     if (!storyId) {
       return;
     }
@@ -3211,7 +2551,6 @@
         storyId
       )
     ) {
-
       state.favorites =
         state.favorites.filter(
           (id) =>
@@ -3219,7 +2558,6 @@
         );
 
     } else {
-
       state.favorites.push(
         storyId
       );
@@ -3232,7 +2570,6 @@
     if (
       state.currentStory
     ) {
-
       renderFavoriteButton(
         state.currentStory
       );
@@ -3246,59 +2583,55 @@
   function renderFavoriteButton(
     story
   ) {
-
     $$(
       "[data-favorite-story], #favoriteStory, .favorite-story"
-    ).forEach(
-      (button) => {
-
-        const active =
-          isFavorite(
-            story.story_id
-          );
-
-
-        button.classList.toggle(
-          "active",
-          active
-        );
+    )
+      .forEach(
+        (button) => {
+          const active =
+            isFavorite(
+              story.story_id
+            );
 
 
-        button.setAttribute(
-          "aria-pressed",
-          String(active)
-        );
-
-
-        const label =
-          button.querySelector(
-            "[data-favorite-label]"
-          );
-
-
-        if (label) {
-
-          text(
-            label,
-
+          button.classList.toggle(
+            "active",
             active
-              ? "Saved"
-              : "Save"
           );
+
+
+          button.setAttribute(
+            "aria-pressed",
+            String(active)
+          );
+
+
+          const label =
+            button.querySelector(
+              "[data-favorite-label]"
+            );
+
+
+          if (label) {
+            text(
+              label,
+              active
+                ? "Saved"
+                : "Save"
+            );
+          }
         }
-      }
-    );
+      );
   }
 
 
   /* =======================================================
-     24. STORY CARD
+     26. STORY CARD
   ======================================================= */
 
   function storyCard(
     story
   ) {
-
     const favorite =
       isFavorite(
         story.story_id
@@ -3331,34 +2664,26 @@
     const age =
       story.age_min !== "" &&
       story.age_max !== ""
-        ? `Ages ${
-            escapeHTML(
-              story.age_min
-            )
-          }–${
-            escapeHTML(
-              story.age_max
-            )
-          }`
+        ? `Ages ${escapeHTML(
+            story.age_min
+          )}–${escapeHTML(
+            story.age_max
+          )}`
         : "";
 
 
     const audio =
+      story.audio_available &&
       story.audio_url
         ? `<span>Audio</span>`
         : "";
-
-
-    const identifier =
-      story.story_id ||
-      story.slug;
 
 
     return `
       <article
         class="story-card"
         data-story-id="${escapeHTML(
-          identifier
+          story.story_id
         )}"
         data-story-slug="${escapeHTML(
           story.slug
@@ -3369,24 +2694,18 @@
           class="story-card-main"
           type="button"
           data-open-story="${escapeHTML(
-            identifier
+            story.story_id
           )}"
         >
 
-          <div
-            class="story-card-cover"
-          >
+          <div class="story-card-cover">
             ${cover}
           </div>
 
 
-          <div
-            class="story-card-content"
-          >
+          <div class="story-card-content">
 
-            <div
-              class="story-card-meta"
-            >
+            <div class="story-card-meta">
 
               ${
                 story.category
@@ -3423,9 +2742,7 @@
             ${
               story.subtitle
                 ? `
-                  <p
-                    class="story-card-subtitle"
-                  >
+                  <p class="story-card-subtitle">
                     ${escapeHTML(
                       story.subtitle
                     )}
@@ -3438,9 +2755,7 @@
             ${
               story.description
                 ? `
-                  <p
-                    class="story-card-description"
-                  >
+                  <p class="story-card-description">
                     ${escapeHTML(
                       story.description
                     )}
@@ -3450,9 +2765,7 @@
             }
 
 
-            <div
-              class="story-card-footer"
-            >
+            <div class="story-card-footer">
 
               ${
                 story.reading_time
@@ -3487,7 +2800,7 @@
               : ""
           }"
           data-save-story="${escapeHTML(
-            identifier
+            story.story_id
           )}"
           aria-label="${
             favorite
@@ -3508,11 +2821,10 @@
 
 
   /* =======================================================
-     25. STORY LIBRARY
+     27. STORY LIBRARY
   ======================================================= */
 
   function renderStoryLibrary() {
-
     const container =
       firstExisting(
         "#storyGrid",
@@ -3526,9 +2838,8 @@
 
 
     if (!container) {
-
       console.warn(
-        "[StoryNest] Story library container not found."
+        "Story library container not found."
       );
 
       return;
@@ -3538,7 +2849,6 @@
     if (
       !state.stories.length
     ) {
-
       renderEmptyState(
         "No stories found.",
         "Try another search or filter."
@@ -3550,11 +2860,8 @@
 
     html(
       container,
-
       state.stories
-        .map(
-          storyCard
-        )
+        .map(storyCard)
         .join("")
     );
 
@@ -3565,8 +2872,11 @@
   }
 
 
-  function renderFeatured() {
+  /* =======================================================
+     28. FEATURED
+  ======================================================= */
 
+  function renderFeatured() {
     const container =
       firstExisting(
         "#featuredGrid",
@@ -3584,7 +2894,6 @@
     if (
       !state.featured.length
     ) {
-
       container.hidden =
         true;
 
@@ -3598,11 +2907,8 @@
 
     html(
       container,
-
       state.featured
-        .map(
-          storyCard
-        )
+        .map(storyCard)
         .join("")
     );
 
@@ -3614,11 +2920,10 @@
 
 
   /* =======================================================
-     26. CATEGORIES
+     29. CATEGORIES
   ======================================================= */
 
   function renderCategories() {
-
     const selects =
       $$(
         "#categoryFilter, [data-category-filter]"
@@ -3627,32 +2932,33 @@
 
     selects.forEach(
       (select) => {
-
         const current =
           select.value;
 
 
         html(
           select,
-
-          `<option value="">
-            All categories
-          </option>` +
-
+          `
+            <option value="">
+              All categories
+            </option>
+          ` +
           state.categories
             .map(
               (item) => {
-
                 const name =
                   typeof item ===
                   "string"
                     ? item
-                    : (
-                        item?.name ||
-                        item?.title ||
-                        item?.category ||
-                        ""
-                      );
+                    : item?.name ||
+                      item?.title ||
+                      item?.category ||
+                      "";
+
+
+                if (!name) {
+                  return "";
+                }
 
 
                 return `
@@ -3681,11 +2987,10 @@
 
 
   /* =======================================================
-     27. GENRES
+     30. GENRES
   ======================================================= */
 
   function renderGenres() {
-
     const selects =
       $$(
         "#genreFilter, [data-genre-filter]"
@@ -3694,32 +2999,33 @@
 
     selects.forEach(
       (select) => {
-
         const current =
           select.value;
 
 
         html(
           select,
-
-          `<option value="">
-            All genres
-          </option>` +
-
+          `
+            <option value="">
+              All genres
+            </option>
+          ` +
           state.genres
             .map(
               (item) => {
-
                 const name =
                   typeof item ===
                   "string"
                     ? item
-                    : (
-                        item?.name ||
-                        item?.title ||
-                        item?.genre ||
-                        ""
-                      );
+                    : item?.name ||
+                      item?.title ||
+                      item?.genre ||
+                      "";
+
+
+                if (!name) {
+                  return "";
+                }
 
 
                 return `
@@ -3748,36 +3054,34 @@
 
 
   /* =======================================================
-     28. STORY COUNT
+     31. STORY COUNT
   ======================================================= */
 
   function updateStoryCount(
     count
   ) {
-
     $$(
       "#storyCount, [data-story-count]"
-    ).forEach(
-      (element) => {
-
-        text(
-          element,
-          count
-        );
-      }
-    );
+    )
+      .forEach(
+        (element) => {
+          text(
+            element,
+            count
+          );
+        }
+      );
   }
 
 
   /* =======================================================
-     29. EMPTY STATE
+     32. EMPTY STATE
   ======================================================= */
 
   function renderEmptyState(
     title,
     description
   ) {
-
     const container =
       firstExisting(
         "#storyGrid",
@@ -3797,7 +3101,6 @@
 
     html(
       container,
-
       `
         <div class="empty-state">
 
@@ -3807,13 +3110,11 @@
             )}
           </h3>
 
-
           <p>
             ${escapeHTML(
               description
             )}
           </p>
-
 
           <button
             type="button"
@@ -3827,16 +3128,28 @@
     );
 
 
-    bindEvents();
+    bindResetButtons();
+  }
+
+
+  function bindResetButtons() {
+    $$(
+      "[data-reset-filters], #resetFilters"
+    )
+      .forEach(
+        (button) => {
+          button.onclick =
+            resetFilters;
+        }
+      );
   }
 
 
   /* =======================================================
-     30. STORY LOAD ERROR
+     33. STORY LOAD ERROR
   ======================================================= */
 
   function renderStoryLoadError() {
-
     const container =
       firstExisting(
         "#storyContent",
@@ -3854,7 +3167,6 @@
 
     html(
       container,
-
       `
         <div class="story-empty">
 
@@ -3862,35 +3174,22 @@
             We couldn't open this story.
           </strong>
 
-
           <p>
             Please return to the story library
             and try again.
           </p>
 
-
-          <button
-            type="button"
-            data-back-to-stories
-          >
-            Back to Stories
-          </button>
-
         </div>
       `
     );
-
-
-    bindEvents();
   }
 
 
   /* =======================================================
-     31. NAVIGATION
+     34. NAVIGATION
   ======================================================= */
 
   function scrollToStory() {
-
     const page =
       firstExisting(
         "#storyPage",
@@ -3906,17 +3205,10 @@
 
     setTimeout(
       () => {
-
-        page.scrollIntoView(
-          {
-            behavior:
-              "smooth",
-
-            block:
-              "start"
-          }
-        );
-
+        page.scrollIntoView({
+          behavior: "smooth",
+          block: "start"
+        });
       },
       50
     );
@@ -3924,7 +3216,6 @@
 
 
   function closeStory() {
-
     state.currentStory =
       null;
 
@@ -3938,7 +3229,6 @@
 
 
     if (page) {
-
       page.hidden =
         true;
     }
@@ -3949,34 +3239,28 @@
 
 
     try {
-
       audio.pause();
 
       audio.currentTime =
         0;
 
-    } catch {
-      /* ignore */
-    }
+    } catch {}
 
 
-    window.scrollTo(
-      {
-        top: 0,
-        behavior: "smooth"
-      }
-    );
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth"
+    });
   }
 
 
   /* =======================================================
-     32. READING PROGRESS
+     35. READING PROGRESS
   ======================================================= */
 
   function updateReadingProgress(
     story
   ) {
-
     if (
       !story?.story_id
     ) {
@@ -3991,7 +3275,7 @@
 
 
     if (
-      saved === undefined
+      saved == null
     ) {
       return;
     }
@@ -4015,7 +3299,6 @@
 
 
     if (bar) {
-
       bar.style.width =
         `${progress}%`;
     }
@@ -4023,7 +3306,6 @@
 
 
   function trackReadingProgress() {
-
     const story =
       state.currentStory;
 
@@ -4061,11 +3343,6 @@
     const viewport =
       window.innerHeight;
 
-
-    /*
-     * Calculate document-relative
-     * reading position.
-     */
 
     const contentTop =
       window.scrollY +
@@ -4108,29 +3385,14 @@
 
 
     saveProgress();
-
-
-    const bar =
-      firstExisting(
-        "#readingProgress",
-        "[data-reading-progress]"
-      );
-
-
-    if (bar) {
-
-      bar.style.width =
-        `${percent}%`;
-    }
   }
 
 
   /* =======================================================
-     33. FILTERS
+     36. FILTERS
   ======================================================= */
 
   async function applyFilters() {
-
     const category =
       firstExisting(
         "#categoryFilter",
@@ -4177,7 +3439,6 @@
 
 
   async function resetFilters() {
-
     state.category =
       "";
 
@@ -4196,42 +3457,46 @@
 
     $$(
       "#categoryFilter, [data-category-filter]"
-    ).forEach(
-      (element) => {
-        element.value =
-          "";
-      }
-    );
+    )
+      .forEach(
+        (element) => {
+          element.value =
+            "";
+        }
+      );
 
 
     $$(
       "#genreFilter, [data-genre-filter]"
-    ).forEach(
-      (element) => {
-        element.value =
-          "";
-      }
-    );
+    )
+      .forEach(
+        (element) => {
+          element.value =
+            "";
+        }
+      );
 
 
     $$(
       "#ageFilter, [data-age-filter]"
-    ).forEach(
-      (element) => {
-        element.value =
-          "";
-      }
-    );
+    )
+      .forEach(
+        (element) => {
+          element.value =
+            "";
+        }
+      );
 
 
     $$(
       "#searchInput, [data-search-input]"
-    ).forEach(
-      (element) => {
-        element.value =
-          "";
-      }
-    );
+    )
+      .forEach(
+        (element) => {
+          element.value =
+            "";
+        }
+      );
 
 
     await loadStories();
@@ -4239,62 +3504,53 @@
 
 
   /* =======================================================
-     34. DYNAMIC STORY CARDS
+     37. DYNAMIC STORY CARDS
   ======================================================= */
 
   function bindDynamicStoryCards(
     root = document
   ) {
-
     $$(
       "[data-open-story]",
       root
-    ).forEach(
-      (button) => {
-
-        button.onclick =
-          (event) => {
-
-            event.preventDefault();
-
-            openStory(
-              button.dataset.openStory
-            );
-          };
-      }
-    );
+    )
+      .forEach(
+        (button) => {
+          button.onclick =
+            () => {
+              openStory(
+                button.dataset
+                  .openStory
+              );
+            };
+        }
+      );
 
 
     $$(
       "[data-save-story]",
       root
-    ).forEach(
-      (button) => {
-
-        button.onclick =
-          (event) => {
-
-            event.preventDefault();
-
-            event.stopPropagation();
+    )
+      .forEach(
+        (button) => {
+          button.onclick =
+            (event) => {
+              event.stopPropagation();
 
 
-            toggleFavorite(
-              button.dataset.saveStory
-            );
-          };
-      }
-    );
+              toggleFavorite(
+                button.dataset
+                  .saveStory
+              );
+            };
+        }
+      );
   }
 
 
   /* =======================================================
-     35. EVENT BINDING
+     38. EVENTS
   ======================================================= */
-
-  let globalEventsBound =
-    false;
-
 
   function bindEvents() {
 
@@ -4304,50 +3560,51 @@
 
     $$(
       "[data-open-story]"
-    ).forEach(
-      (button) => {
-
-        button.onclick =
-          (event) => {
-
-            event.preventDefault();
-
-            openStory(
-              button.dataset.openStory
-            );
-          };
-      }
-    );
+    )
+      .forEach(
+        (button) => {
+          button.onclick =
+            () => {
+              openStory(
+                button.dataset
+                  .openStory
+              );
+            };
+        }
+      );
 
 
     $$(
       "[data-close-story], #closeStory, .close-story"
-    ).forEach(
-      (button) => {
-
-        button.onclick =
-          closeStory;
-      }
-    );
+    )
+      .forEach(
+        (button) => {
+          button.onclick =
+            closeStory;
+        }
+      );
 
 
     /*
      * Search
      */
 
-    $$(
-      "#searchInput, [data-search-input]"
-    ).forEach(
-      (input) => {
+    const searchInputs =
+      $$(
+        "#searchInput, [data-search-input]"
+      );
 
+
+    searchInputs.forEach(
+      (input) => {
         if (
-          input.dataset.storynestBound
+          input.dataset.bound
         ) {
           return;
         }
 
 
-        input.dataset.storynestBound =
+        input.dataset.bound =
           "true";
 
 
@@ -4357,7 +3614,6 @@
         input.addEventListener(
           "input",
           () => {
-
             clearTimeout(
               timer
             );
@@ -4378,13 +3634,12 @@
         input.addEventListener(
           "keydown",
           (event) => {
-
             if (
               event.key ===
               "Enter"
             ) {
-
               event.preventDefault();
+
 
               clearTimeout(
                 timer
@@ -4401,9 +3656,9 @@
               event.key ===
               "Escape"
             ) {
-
               input.value =
                 "";
+
 
               searchStories(
                 ""
@@ -4421,39 +3676,26 @@
 
     $$(
       "[data-search-submit]"
-    ).forEach(
-      (button) => {
+    )
+      .forEach(
+        (button) => {
+          button.onclick =
+            () => {
+              const input =
+                firstExisting(
+                  "#searchInput",
+                  "[data-search-input]"
+                );
 
-        if (
-          button.dataset.storynestBound
-        ) {
-          return;
+
+              if (input) {
+                searchStories(
+                  input.value
+                );
+              }
+            };
         }
-
-
-        button.dataset.storynestBound =
-          "true";
-
-
-        button.onclick =
-          () => {
-
-            const input =
-              firstExisting(
-                "#searchInput",
-                "[data-search-input]"
-              );
-
-
-            if (input) {
-
-              searchStories(
-                input.value
-              );
-            }
-          };
-      }
-    );
+      );
 
 
     /*
@@ -4464,41 +3706,31 @@
       "#categoryFilter, [data-category-filter], " +
       "#genreFilter, [data-genre-filter], " +
       "#ageFilter, [data-age-filter]"
-    ).forEach(
-      (element) => {
+    )
+      .forEach(
+        (element) => {
+          if (
+            element.dataset
+              .filterBound
+          ) {
+            return;
+          }
 
-        if (
-          element.dataset.storynestBound
-        ) {
-          return;
+
+          element.dataset
+            .filterBound =
+            "true";
+
+
+          element.addEventListener(
+            "change",
+            applyFilters
+          );
         }
+      );
 
 
-        element.dataset.storynestBound =
-          "true";
-
-
-        element.addEventListener(
-          "change",
-          applyFilters
-        );
-      }
-    );
-
-
-    /*
-     * Reset filters
-     */
-
-    $$(
-      "[data-reset-filters], #resetFilters"
-    ).forEach(
-      (button) => {
-
-        button.onclick =
-          resetFilters;
-      }
-    );
+    bindResetButtons();
 
 
     /*
@@ -4507,124 +3739,80 @@
 
     $$(
       "#refreshButton, [data-refresh]"
-    ).forEach(
-      (button) => {
-
-        if (
-          button.dataset.storynestBound
-        ) {
-          return;
-        }
-
-
-        button.dataset.storynestBound =
-          "true";
-
-
-        button.onclick =
-          async () => {
-
-            try {
-
+    )
+      .forEach(
+        (button) => {
+          button.onclick =
+            async () => {
               await initialize();
-
-            } catch (
-              error
-            ) {
-
-              console.error(
-                error
-              );
-            }
-          };
-      }
-    );
+            };
+        }
+      );
 
 
     /*
-     * Audio controls
+     * Audio
      */
 
     $$(
       "[data-audio-toggle], #audioPlay, .audio-play"
-    ).forEach(
-      (button) => {
-
-        if (
-          button.dataset.storynestBound
-        ) {
-          return;
+    )
+      .forEach(
+        (button) => {
+          button.onclick =
+            toggleAudio;
         }
-
-
-        button.dataset.storynestBound =
-          "true";
-
-
-        button.onclick =
-          toggleAudio;
-      }
-    );
+      );
 
 
     $$(
       "[data-audio-speed], #audioSpeed"
-    ).forEach(
-      (select) => {
+    )
+      .forEach(
+        (select) => {
+          if (
+            select.dataset
+              .audioBound
+          ) {
+            return;
+          }
 
-        if (
-          select.dataset.storynestBound
-        ) {
-          return;
+
+          select.dataset
+            .audioBound =
+            "true";
+
+
+          select.addEventListener(
+            "change",
+            () =>
+              setAudioSpeed(
+                select.value
+              )
+          );
         }
-
-
-        select.dataset.storynestBound =
-          "true";
-
-
-        select.addEventListener(
-          "change",
-          () =>
-            setAudioSpeed(
-              select.value
-            )
-        );
-      }
-    );
+      );
 
 
     $$(
       "[data-audio-progress], #audioProgress"
-    ).forEach(
-      (element) => {
-
-        if (
-          element.dataset.storynestBound
-        ) {
-          return;
+    )
+      .forEach(
+        (element) => {
+          if (
+            element.tagName ===
+            "INPUT"
+          ) {
+            element.addEventListener(
+              "input",
+              () =>
+                seekAudio(
+                  element.value
+                )
+            );
+          }
         }
-
-
-        if (
-          element.tagName ===
-          "INPUT"
-        ) {
-
-          element.dataset.storynestBound =
-            "true";
-
-
-          element.addEventListener(
-            "input",
-            () =>
-              seekAudio(
-                element.value
-              )
-          );
-        }
-      }
-    );
+      );
 
 
     /*
@@ -4633,25 +3821,22 @@
 
     $$(
       "[data-favorite-story], #favoriteStory, .favorite-story"
-    ).forEach(
-      (button) => {
-
-        button.onclick =
-          (event) => {
-
-            event.preventDefault();
-
-            if (
-              state.currentStory
-            ) {
-
-              toggleFavorite(
-                state.currentStory.story_id
-              );
-            }
-          };
-      }
-    );
+    )
+      .forEach(
+        (button) => {
+          button.onclick =
+            () => {
+              if (
+                state.currentStory
+              ) {
+                toggleFavorite(
+                  state.currentStory
+                    .story_id
+                );
+              }
+            };
+        }
+      );
 
 
     /*
@@ -4660,44 +3845,47 @@
 
     $$(
       "[data-theme]"
-    ).forEach(
-      (button) => {
-
-        if (
-          button.dataset.storynestBound
-        ) {
-          return;
-        }
-
-
-        button.dataset.storynestBound =
-          "true";
-
-
-        button.addEventListener(
-          "click",
-          () => {
-
-            const theme =
-              button.dataset.theme;
-
-
-            if (!theme) {
-              return;
-            }
-
-
-            state.preferences.theme =
-              theme;
-
-
-            savePreferences();
-
-            applyPreferences();
+    )
+      .forEach(
+        (button) => {
+          if (
+            button.dataset
+              .themeBound
+          ) {
+            return;
           }
-        );
-      }
-    );
+
+
+          button.dataset
+            .themeBound =
+            "true";
+
+
+          button.addEventListener(
+            "click",
+            () => {
+              const theme =
+                button.dataset
+                  .theme;
+
+
+              if (!theme) {
+                return;
+              }
+
+
+              state.preferences
+                .theme =
+                theme;
+
+
+              savePreferences();
+
+              applyPreferences();
+            }
+          );
+        }
+      );
 
 
     /*
@@ -4706,44 +3894,47 @@
 
     $$(
       "[data-text-size]"
-    ).forEach(
-      (button) => {
-
-        if (
-          button.dataset.storynestBound
-        ) {
-          return;
-        }
-
-
-        button.dataset.storynestBound =
-          "true";
-
-
-        button.addEventListener(
-          "click",
-          () => {
-
-            const value =
-              button.dataset.textSize;
-
-
-            if (!value) {
-              return;
-            }
-
-
-            state.preferences.textSize =
-              value;
-
-
-            savePreferences();
-
-            applyPreferences();
+    )
+      .forEach(
+        (button) => {
+          if (
+            button.dataset
+              .textBound
+          ) {
+            return;
           }
-        );
-      }
-    );
+
+
+          button.dataset
+            .textBound =
+            "true";
+
+
+          button.addEventListener(
+            "click",
+            () => {
+              const value =
+                button.dataset
+                  .textSize;
+
+
+              if (!value) {
+                return;
+              }
+
+
+              state.preferences
+                .textSize =
+                value;
+
+
+              savePreferences();
+
+              applyPreferences();
+            }
+          );
+        }
+      );
 
 
     /*
@@ -4752,44 +3943,47 @@
 
     $$(
       "[data-reading-width]"
-    ).forEach(
-      (button) => {
-
-        if (
-          button.dataset.storynestBound
-        ) {
-          return;
-        }
-
-
-        button.dataset.storynestBound =
-          "true";
-
-
-        button.addEventListener(
-          "click",
-          () => {
-
-            const value =
-              button.dataset.readingWidth;
-
-
-            if (!value) {
-              return;
-            }
-
-
-            state.preferences.readingWidth =
-              value;
-
-
-            savePreferences();
-
-            applyPreferences();
+    )
+      .forEach(
+        (button) => {
+          if (
+            button.dataset
+              .widthBound
+          ) {
+            return;
           }
-        );
-      }
-    );
+
+
+          button.dataset
+            .widthBound =
+            "true";
+
+
+          button.addEventListener(
+            "click",
+            () => {
+              const value =
+                button.dataset
+                  .readingWidth;
+
+
+              if (!value) {
+                return;
+              }
+
+
+              state.preferences
+                .readingWidth =
+                value;
+
+
+              savePreferences();
+
+              applyPreferences();
+            }
+          );
+        }
+      );
 
 
     /*
@@ -4798,158 +3992,133 @@
 
     $$(
       "[data-back-to-stories], #backToStories"
-    ).forEach(
-      (button) => {
-
-        button.onclick =
-          closeStory;
-      }
-    );
-
-
-    /*
-     * Global keyboard / scroll /
-     * online events should only be
-     * bound once.
-     */
-
-    if (
-      globalEventsBound
-    ) {
-      return;
-    }
-
-
-    globalEventsBound =
-      true;
+    )
+      .forEach(
+        (button) => {
+          button.onclick =
+            closeStory;
+        }
+      );
 
 
     /*
      * Keyboard shortcuts
      */
 
-    document.addEventListener(
-      "keydown",
-      (event) => {
-
-        if (
-          event.key ===
-            "Escape" &&
-          state.currentStory
-        ) {
-
-          closeStory();
-        }
+    if (
+      !document.body.dataset
+        .storyNestKeyboardBound
+    ) {
+      document.body.dataset
+        .storyNestKeyboardBound =
+        "true";
 
 
-        if (
-          event.key === "/" &&
-          !isTypingTarget(
-            event.target
-          )
-        ) {
+      document.addEventListener(
+        "keydown",
+        (event) => {
 
-          event.preventDefault();
-
-
-          const input =
-            firstExisting(
-              "#searchInput",
-              "[data-search-input]"
-            );
+          if (
+            event.key ===
+              "Escape" &&
+            state.currentStory
+          ) {
+            closeStory();
+          }
 
 
-          if (input) {
-            input.focus();
+          if (
+            event.key ===
+              "/" &&
+            !isTypingTarget(
+              event.target
+            )
+          ) {
+            event.preventDefault();
+
+
+            const input =
+              firstExisting(
+                "#searchInput",
+                "[data-search-input]"
+              );
+
+
+            if (input) {
+              input.focus();
+            }
           }
         }
-      }
-    );
+      );
+    }
 
 
     /*
      * Reading progress
      */
 
-    window.addEventListener(
-      "scroll",
-      throttle(
-        trackReadingProgress,
-        250
-      ),
-      {
-        passive: true
-      }
-    );
+    if (
+      !window.__storyNestScrollBound
+    ) {
+      window.__storyNestScrollBound =
+        true;
+
+
+      window.addEventListener(
+        "scroll",
+        throttle(
+          trackReadingProgress,
+          250
+        ),
+        {
+          passive: true
+        }
+      );
+    }
 
 
     /*
-     * Online status
+     * Online/offline
      */
-
-    window.addEventListener(
-      "online",
-      () => {
-
-        setConnectionStatus(
-          "Connection restored",
-          "online"
-        );
-      }
-    );
-
-
-    /*
-     * Offline status
-     */
-
-    window.addEventListener(
-      "offline",
-      () => {
-
-        setConnectionStatus(
-          "You are offline",
-          "offline"
-        );
-      }
-    );
-  }
-
-
-  /* =======================================================
-     36. RENDER ALL
-  ======================================================= */
-
-  function renderAll() {
-
-    renderStoryLibrary();
-
-    renderFeatured();
-
-    renderCategories();
-
-    renderGenres();
-
 
     if (
-      state.currentStory
+      !window.__storyNestNetworkBound
     ) {
+      window.__storyNestNetworkBound =
+        true;
 
-      renderStoryPage(
-        state.currentStory
+
+      window.addEventListener(
+        "online",
+        () => {
+          setConnectionStatus(
+            "Connection restored",
+            "online"
+          );
+        }
+      );
+
+
+      window.addEventListener(
+        "offline",
+        () => {
+          setConnectionStatus(
+            "You are offline",
+            "offline"
+          );
+        }
       );
     }
   }
 
 
   /* =======================================================
-     37. UTILITY
+     39. UTILITIES
   ======================================================= */
 
   function isTypingTarget(
     element
   ) {
-
     if (!element) {
       return false;
     }
@@ -4972,7 +4141,6 @@
     callback,
     delay
   ) {
-
     let lastCall =
       0;
 
@@ -4980,10 +4148,7 @@
       null;
 
 
-    return function (
-      ...args
-    ) {
-
+    return function (...args) {
       const now =
         Date.now();
 
@@ -4999,7 +4164,6 @@
       if (
         remaining <= 0
       ) {
-
         clearTimeout(
           timeout
         );
@@ -5021,11 +4185,9 @@
       } else if (
         !timeout
       ) {
-
         timeout =
           setTimeout(
             () => {
-
               lastCall =
                 Date.now();
 
@@ -5038,7 +4200,6 @@
                 this,
                 args
               );
-
             },
             remaining
           );
@@ -5048,14 +4209,11 @@
 
 
   /* =======================================================
-     38. GLOBAL STORYNEST API
+     40. GLOBAL STORYNEST API
   ======================================================= */
 
   window.StoryNest = {
-
     api,
-
-    initialize,
 
     loadStories,
 
@@ -5077,21 +4235,32 @@
 
     setAudioSpeed,
 
+    renderAll,
+
+    normalizeStory,
+
     state
   };
 
 
   /* =======================================================
-     39. START APPLICATION
+     41. START APPLICATION
   ======================================================= */
 
-  document.addEventListener(
-    "DOMContentLoaded",
-    () => {
+  if (
+    document.readyState ===
+    "loading"
+  ) {
+    document.addEventListener(
+      "DOMContentLoaded",
+      initialize,
+      {
+        once: true
+      }
+    );
 
-      initialize();
-
-    }
-  );
+  } else {
+    initialize();
+  }
 
 })();
